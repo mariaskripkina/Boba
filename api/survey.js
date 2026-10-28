@@ -39,7 +39,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    await recordSubmission({ answers: result.answers, drink: result.drink });
+    await recordSubmission({ answers: result.answers, drink: result.drink, region: result.region });
   } catch (error) {
     console.error('recordSubmission failed:', error.message);
     return sendJson(res, 500, { error: 'Could not save your answers. Please try again.' });

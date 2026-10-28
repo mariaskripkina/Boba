@@ -72,6 +72,37 @@ export const QUESTIONS = [
 
 export const MIN_ANSWERS_NOTE = 'Answer any question you like. Skipping is fine.';
 
+// ---- the optional "part of the world" question ------------------------------
+//
+// Deliberately BROAD: a country, city or neighborhood could point to one
+// person, but a world region cannot. The list is fixed, so the server only
+// accepts these exact ids.
+export const REGIONS = [
+  { id: 'east-asia',      label: 'East Asia' },
+  { id: 'southeast-asia', label: 'Southeast Asia' },
+  { id: 'south-asia',     label: 'South Asia' },
+  { id: 'central-asia',   label: 'Central Asia and Caucasus' },
+  { id: 'mena',           label: 'Middle East and North Africa' },
+  { id: 'sub-saharan',    label: 'Sub-Saharan Africa' },
+  { id: 'europe',         label: 'Europe' },
+  { id: 'north-america',  label: 'North America' },
+  { id: 'latin-america',  label: 'Latin America and Caribbean' },
+  { id: 'oceania',        label: 'Oceania' },
+];
+
+// "Prefer not to say" is a choice in the form, but it is NOT a region: picking
+// it sends no region at all, exactly like skipping the question.
+export const REGION_PREFER_NOT_TO_SAY = 'prefer-not-to-say';
+
+export const REGION_QUESTION = {
+  title: 'Which part of the world do you live in?',
+  hint: 'Optional. It only adds to broad regional totals.',
+};
+
+// Only these questions are compared across regions. Fewer comparisons means
+// fewer small groups, which keeps the results more honest and more private.
+export const COMPARE_QUESTIONS = ['sweetness', 'adventure', 'travel'];
+
 // Lists of the valid values for the optional "share my drink" part.
 const DRINK_FIELDS = {
   tea: TEAS.map((t) => t.id),
@@ -89,7 +120,7 @@ export function validateSubmission(body) {
   }
 
   // Only these top-level keys are allowed (`website` is the hidden bot trap).
-  const allowedTop = new Set(['answers', 'drink', 'website']);
+  const allowedTop = new Set(['answers', 'drink', 'region', 'website']);
   for (const key of Object.keys(body)) {
     if (!allowedTop.has(key)) return { ok: false, error: `Unknown field: ${key}` };
   }
@@ -127,9 +158,20 @@ export function validateSubmission(body) {
     drink = { tea: d.tea, flavor: d.flavor, sweet, toppings };
   }
 
+  // Region is optional. null/undefined means "skipped". Anything else must be
+  // exactly one of the ids in REGIONS.
+  let region = null;
+  if (body.region !== undefined && body.region !== null) {
+    if (typeof body.region !== 'string' || !REGIONS.some((r) => r.id === body.region)) {
+      return { ok: false, error: 'Invalid region.' };
+    }
+    region = body.region;
+  }
+
+  // A region alone is not a submission: it only means something next to an answer.
   if (Object.keys(answers).length === 0 && !drink) {
     return { ok: false, error: 'Answer at least one question or share your drink.' };
   }
 
-  return { ok: true, answers, drink };
+  return { ok: true, answers, drink, region };
 }

@@ -150,7 +150,7 @@ test('the server never stores individual responses', async () => {
   await call(survey, 'POST', { answers: { texture: 'chewy', travel: 'often' } });
   const memory = globalThis.__bobaMemory;
   for (const [key, value] of memory.entries()) {
-    assert.match(key, /^boba:v1:(total|drinks|q:|drink:)/);
+    assert.match(key, /^boba:v1:(total|drinks|q:|drink:|x:)/);
     // Each value is a plain number or a {choice: count} map, nothing per-person.
     assert.ok(typeof value === 'number' || Object.values(value).every((n) => typeof n === 'number'));
   }
@@ -253,4 +253,95 @@ test('drink charts stay hidden until enough people share a drink', async () => {
   assert.equal(r.json.ready, true);
   assert.equal(r.json.drinksTotal, 2);
   assert.deepEqual(r.json.drinks.tea, {});
+});
+
+// ---- regions ----------------------------------------------------------------
+
+// Small helper: submit one answer for a region (or none).
+const submitFor = (region, answers) => call(survey, 'POST', region ? { answers, region } : { answers });
+
+test('region validation: accepts known regions, rejects everything else', () => {
+  assert.equal(validateSubmission({ answers: { adventure: 'try' }, region: 'central-asia' }).region, 'central-asia');
+  assert.equal(validateSubmission({ answers: { adventure: 'try' } }).region, null);
+  assert.equal(validateSubmission({ answers: { adventure: 'try' }, region: null }).region, null);
+  assert.equal(validateSubmission({ answers: { adventure: 'try' }, region: 'narnia' }).ok, false);
+  assert.equal(validateSubmission({ answers: { adventure: 'try' }, region: 'Uzbekistan' }).ok, false, 'countries are not accepted');
+  assert.equal(validateSubmission({ answers: { adventure: 'try' }, region: ['europe'] }).ok, false);
+  // "Prefer not to say" is a form choice that sends no region, so the server has no such region.
+  assert.equal(validateSubmission({ answers: { adventure: 'try' }, region: 'prefer-not-to-say' }).ok, false);
+});
+
+test('a region on its own is not a submission', () => {
+  assert.equal(validateSubmission({ region: 'europe' }).ok, false);
+});
+
+test('regional counters are separate per question and skipped regions add nothing', async () => {
+  await submitFor('europe', { adventure: 'try', travel: 'often', texture: 'chewy' });
+  await submitFor(null, { adventure: 'skip' });
+  const keys = [...globalThis.__bobaMemory.keys()].filter((k) => k.includes(':x:'));
+  assert.deepEqual(keys.sort(), ['boba:v1:x:adventure', 'boba:v1:x:travel']);
+  // texture is not a compared question, so it is never counted by region.
+  assert.deepEqual(globalThis.__bobaMemory.get('boba:v1:x:adventure'), { 'europe|try': 1 });
+});
+
+test('regional results stay hidden until a region has enough people for that question', async () => {
+  // min is 3 in tests. Two people from Europe is too few.
+  await submitFor('europe', { adventure: 'try' });
+  await submitFor('europe', { adventure: 'ask' });
+  await submitFor(null, { adventure: 'try' });
+  const r = await call(results, 'GET');
+  assert.equal(r.json.ready, true);
+  assert.deepEqual(r.json.regional.questions, {});
+});
+
+test('a region with enough people is shown with percentages, never raw counts', async () => {
+  await submitFor('europe', { adventure: 'try' });
+  await submitFor('europe', { adventure: 'try' });
+  await submitFor('europe', { adventure: 'ask' });
+  const r = await call(results, 'GET');
+  const groups = r.json.regional.questions.adventure;
+  assert.equal(groups.length, 1);
+  assert.equal(groups[0].region, 'europe');
+  assert.equal(groups[0].n, 3);
+  assert.deepEqual(groups[0].shares, { try: 67, ask: 33 });
+  assert.equal(r.json.cross, undefined, 'the raw regional counts must never be sent');
+  assert.equal(JSON.stringify(r.json).includes('europe|'), false);
+});
+
+test('the minimum is checked per question, not per region overall', async () => {
+  // 3 people from Europe answered adventure, but only 2 answered travel.
+  await submitFor('europe', { adventure: 'try', travel: 'often' });
+  await submitFor('europe', { adventure: 'try', travel: 'often' });
+  await submitFor('europe', { adventure: 'ask' });
+  const r = await call(results, 'GET');
+  assert.ok(r.json.regional.questions.adventure);
+  assert.equal(r.json.regional.questions.travel, undefined);
+});
+
+test('small regions are only combined into "other" when there are 2+ and the group is big enough', async () => {
+  // Two small regions (2 + 1) together reach the minimum of 3.
+  await submitFor('south-asia', { adventure: 'try' });
+  await submitFor('south-asia', { adventure: 'try' });
+  await submitFor('oceania', { adventure: 'ask' });
+  let r = await call(results, 'GET');
+  let groups = r.json.regional.questions.adventure;
+  assert.deepEqual(groups.map((g) => g.region), ['other']);
+  assert.equal(groups[0].n, 3);
+  assert.equal(JSON.stringify(r.json).includes('south-asia'), false, 'a hidden region is never named');
+  assert.equal(JSON.stringify(r.json).includes('oceania'), false);
+
+  // Two small regions that together are still too small stay hidden.
+  resetMemoryStore();
+  await submitFor('south-asia', { adventure: 'try' });
+  await submitFor('oceania', { adventure: 'ask' });
+  await submitFor(null, { adventure: 'try' });
+  r = await call(results, 'GET');
+  assert.equal(r.json.regional.questions.adventure, undefined);
+});
+
+test('regions come back in a fixed order, not ranked by size or by answers', async () => {
+  for (let i = 0; i < 5; i++) await submitFor('europe', { sweetness: '100' });
+  for (let i = 0; i < 3; i++) await submitFor('east-asia', { sweetness: '0' });
+  const r = await call(results, 'GET');
+  assert.deepEqual(r.json.regional.questions.sweetness.map((g) => g.region), ['east-asia', 'europe']);
 });

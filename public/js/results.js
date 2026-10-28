@@ -7,7 +7,7 @@
 //      it appears, so nobody can mistake it for real findings.
 
 import { h, local } from './dom.js';
-import { QUESTIONS } from './schema.js';
+import { QUESTIONS, REGIONS, COMPARE_QUESTIONS } from './schema.js';
 import { TEAS, FLAVORS, SWEETNESS, TOPPINGS } from './menu.js';
 import { MY_ANSWERS_KEY } from './survey.js';
 
@@ -26,6 +26,21 @@ const DEMO = {
     flavor:  { classic: 12, 'brown-sugar': 16, taro: 9, strawberry: 8, mango: 7, passion: 5, lychee: 8, peach: 6, osmanthus: 4, coconut: 5 },
     sweet:   { 0: 4, 30: 21, 50: 28, 70: 17, 100: 10 },
     topping: { tapioca: 36, popping: 14, 'grass-jelly': 9, 'lychee-jelly': 12, pudding: 11, 'red-bean': 6, 'cheese-foam': 13, none: 8 },
+  },
+  // Made up, and deliberately NOT using real region names: invented numbers next
+  // to "Europe" or "East Asia" could be mistaken for claims about real people.
+  regional: {
+    min: 10,
+    questions: {
+      sweetness: [
+        { region: 'demo-a', label: 'Region A (demo)', n: 34, shares: { 0: 9, 30: 29, 50: 35, 70: 18, 100: 9 } },
+        { region: 'demo-b', label: 'Region B (demo)', n: 26, shares: { 0: 4, 30: 23, 50: 38, 70: 23, 100: 12 } },
+      ],
+      adventure: [
+        { region: 'demo-a', label: 'Region A (demo)', n: 34, shares: { skip: 12, ask: 32, try: 38, seek: 18 } },
+        { region: 'demo-b', label: 'Region B (demo)', n: 26, shares: { skip: 19, ask: 31, try: 35, seek: 15 } },
+      ],
+    },
   },
 };
 
@@ -131,6 +146,74 @@ function drinkCharts(data, mine) {
   ];
 }
 
+// ---- regional comparisons -----------------------------------------------------
+//
+// The server only sends a region when at least `min` people from it answered
+// that question, and only as whole-number percentages. This code never
+// recomputes or "fills in" anything: if a group is not in the data, it is not drawn.
+
+function regionLabel(group) {
+  if (group.label) return group.label; // demo groups carry their own made-up label
+  if (group.region === 'other') return 'Other regions combined';
+  return REGIONS.find((r) => r.id === group.region)?.label ?? group.region;
+}
+
+function regionBlock(question, group, mine) {
+  return h('div', { class: 'region-block' },
+    h('h4', {},
+      regionLabel(group),
+      mine?.region && mine.region === group.region ? h('span', { class: 'bar__you' }, 'Your region') : null,
+    ),
+    h('p', { class: 'region-block__n' }, `${group.n} people answered`),
+    h('ul', { class: 'bars' },
+      question.options.map((option) => {
+        const share = group.shares[option.value] || 0;
+        return h('li', { class: 'bar' },
+          h('span', { class: 'bar__label' }, option.label),
+          h('span', { class: 'bar__track', 'aria-hidden': 'true' },
+            h('span', { class: 'bar__fill', style: { '--w': `${Math.max(share, share ? 2 : 0)}%` } })),
+          h('span', { class: 'bar__value' }, `${share}%`),
+        );
+      }),
+    ),
+  );
+}
+
+function regionalCharts(data, mine) {
+  const regional = data.regional;
+  const min = regional?.min ?? data.min;
+  const compared = COMPARE_QUESTIONS
+    .map((id) => ({ question: QUESTIONS.find((q) => q.id === id), groups: regional?.questions?.[id] }))
+    .filter((item) => item.question && item.groups && item.groups.length > 0);
+
+  const intro = h('p', { class: 'regional__intro' },
+    'People who chose to answer, grouped by the broad part of the world they said they live in. ',
+    'A region is a huge and varied place, and these are small snapshots of this survey\'s participants. ',
+    'They are not a statement about any country or culture.');
+
+  if (compared.length === 0) {
+    return [
+      intro,
+      h('p', { class: 'chart__empty regional__empty' },
+        `Regional comparisons appear once at least ${min} people from a region have answered the same question. `
+        + 'Smaller groups are never shown, so no one can be picked out.'),
+    ];
+  }
+
+  return [
+    intro,
+    ...compared.map(({ question, groups }) =>
+      h('figure', { class: 'chart chart--regional' },
+        h('figcaption', {}, h('h3', {}, question.title),
+          h('p', {}, 'Each region shows the share of its own participants who chose each answer.')),
+        h('div', { class: 'region-blocks' }, groups.map((group) => regionBlock(question, group, mine))),
+        h('p', { class: 'chart__note' },
+          `Only regions with at least ${min} answers to this question are shown. Percentages are rounded.`),
+      ),
+    ),
+  ];
+}
+
 export function initResults() {
   const root = document.getElementById('results-root');
   let mode = 'live';
@@ -190,6 +273,8 @@ export function initResults() {
           questionCharts(DEMO, null),
           h('h3', { class: 'charts__heading' }, 'About the drinks (demo)'),
           drinkCharts(DEMO, null),
+          h('h3', { class: 'charts__heading' }, 'Across regions (demo)'),
+          regionalCharts(DEMO, null),
         ),
       );
       return;
@@ -237,6 +322,8 @@ export function initResults() {
         questionCharts(live, mine),
         h('h3', { class: 'charts__heading' }, 'About the drinks'),
         drinkCharts(live, mine),
+        h('h3', { class: 'charts__heading' }, 'Across regions'),
+        regionalCharts(live, mine),
       ),
       h('p', { class: 'results__caveat' },
         'These results come from people who chose to answer, mostly people who found this page. They are a snapshot, not a study of everyone.'),

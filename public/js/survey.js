@@ -7,7 +7,7 @@
 //     results page can show "you". That copy never leaves your device.
 
 import { h, local } from './dom.js';
-import { QUESTIONS, MIN_ANSWERS_NOTE } from './schema.js';
+import { QUESTIONS, MIN_ANSWERS_NOTE, REGIONS, REGION_QUESTION, REGION_PREFER_NOT_TO_SAY } from './schema.js';
 import { getDrink } from './state.js';
 
 export const MY_ANSWERS_KEY = 'boba-lab-my-answers';
@@ -54,6 +54,22 @@ export function initSurvey() {
         ),
       ),
 
+      // Optional: a broad part of the world. Skipping it (or choosing "Prefer
+      // not to say") sends no region at all.
+      h('fieldset', { class: 'question question--region' },
+        h('legend', {}, REGION_QUESTION.title, h('span', { class: 'question__optional' }, ' (optional)')),
+        h('p', { class: 'question__hint' }, REGION_QUESTION.hint),
+        h('div', { class: 'chips' },
+          [...REGIONS.map((r) => ({ value: r.id, label: r.label })),
+           { value: REGION_PREFER_NOT_TO_SAY, label: 'Prefer not to say' }].map((o) =>
+            h('label', { class: 'chip' },
+              h('input', { type: 'radio', name: 'region', value: o.value }),
+              h('span', { class: 'chip__body' }, o.label),
+            ),
+          ),
+        ),
+      ),
+
       h('div', { class: 'share' },
         h('label', { class: 'check', for: 'share-drink' },
           shareBox,
@@ -68,7 +84,7 @@ export function initSurvey() {
       ),
 
       h('p', { class: 'privacy' },
-        'No names, emails or locations. Only totals are saved, so nobody\'s individual answers exist anywhere.'),
+        'No names, emails or exact locations. Only totals are saved, so nobody\'s individual answers exist anywhere.'),
       submit,
       status,
     );
@@ -84,6 +100,9 @@ export function initSurvey() {
         if (value) answers[q.id] = value;
       }
       const drink = shareBox.checked ? getDrink() : undefined;
+      // "Prefer not to say" and skipping both mean: send no region.
+      const chosenRegion = data.get('region');
+      const region = chosenRegion && chosenRegion !== REGION_PREFER_NOT_TO_SAY ? chosenRegion : undefined;
 
       if (Object.keys(answers).length === 0 && !drink) {
         status.textContent = 'Pick at least one answer, or tick the box to share your drink.';
@@ -101,7 +120,7 @@ export function initSurvey() {
         const response = await fetch('/api/survey', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ answers, drink, website: data.get('website') || '' }),
+          body: JSON.stringify({ answers, drink, region, website: data.get('website') || '' }),
         });
         const result = await response.json().catch(() => ({}));
 
@@ -111,7 +130,7 @@ export function initSurvey() {
           return;
         }
 
-        local.set(MY_ANSWERS_KEY, { answers, drink: drink || null });
+        local.set(MY_ANSWERS_KEY, { answers, drink: drink || null, region: region || null });
         showThanks(Boolean(drink));
         document.dispatchEvent(new CustomEvent('boba:submitted'));
       } catch {

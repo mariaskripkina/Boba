@@ -321,6 +321,18 @@ legend { padding: 0; }
 .pearl-meter li { width: 22px; height: 22px; border-radius: 50%; border: 2px dashed var(--tea); }
 .pearl-meter li.is-filled { background: var(--tea); border-style: solid; box-shadow: inset -3px -3px 0 rgba(255,255,255,0.15); }
 
+/* ---- Regional comparisons (new): uses the same cards and bars as above ---- */
+.question__optional { font-weight: 400; color: #5B4234; }
+.question__hint { font-size: 0.92rem; margin: -6px 0 12px; }
+
+.regional__intro, .regional__empty { grid-column: 1 / -1; max-width: 40rem; }
+.regional__intro { font-style: italic; margin-bottom: 18px; }
+.chart--regional { grid-column: 1 / -1; }
+.region-blocks { display: grid; gap: 18px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr)); }
+.region-block { padding: 16px 18px 18px; background: var(--paper); border: 2px solid var(--tea); border-radius: 22px; }
+.region-block h4 { margin: 0; font-family: var(--font-ui); font-weight: 700; font-size: 1.02rem; line-height: 1.35; }
+.region-block__n { margin: 2px 0 12px; font-family: var(--font-ui); font-size: 0.85rem; color: #5B4234; }
+
 /* The demo preview must never be mistaken for real findings. */
 .demo-banner {
   display: grid; gap: 6px; justify-items: start; margin-bottom: 28px; padding: 16px 18px;
