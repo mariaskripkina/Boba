@@ -1,0 +1,389 @@
+/* ==========================================================================
+   Boba Lab styles
+   Mobile-first: the base styles are for phones. Wider screens are handled
+   further down inside @media (min-width: ...) blocks.
+   ========================================================================== */
+
+/* ---- Fonts (bundled with the site, so no outside services are contacted) ---- */
+@font-face { font-family: 'Poppins'; font-weight: 400; font-style: normal; font-display: swap; src: url('/fonts/Poppins-Regular.woff') format('woff'); }
+@font-face { font-family: 'Poppins'; font-weight: 500; font-style: normal; font-display: swap; src: url('/fonts/Poppins-Medium.woff') format('woff'); }
+@font-face { font-family: 'Poppins'; font-weight: 700; font-style: normal; font-display: swap; src: url('/fonts/Poppins-Bold.woff') format('woff'); }
+@font-face { font-family: 'Lora'; font-weight: 400 700; font-style: normal; font-display: swap; src: url('/fonts/Lora-Variable.woff') format('woff'); }
+@font-face { font-family: 'Lora'; font-weight: 400 700; font-style: italic; font-display: swap; src: url('/fonts/Lora-Italic-Variable.woff') format('woff'); }
+
+/* ---- Colors and sizes, in one place ---- */
+:root {
+  --milk: #F6EBDD;        /* creamy background */
+  --milk-deep: #EBD9C0;   /* a slightly deeper cream */
+  --paper: #FFFAF3;       /* the lightest cream, for forms */
+  --pink: #F2B5C4;        /* strawberry milk */
+  --pink-soft: #F9D9E1;
+  --berry: #B23A60;       /* actions and focus rings (5:1 contrast on cream) */
+  --berry-dark: #8F2C4B;
+  --tea: #3E2419;         /* main text, tea brown */
+  --sugar: #9A6340;       /* brown sugar, for bars */
+  --matcha: #DCE6C5;
+
+  --font-ui: 'Poppins', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-text: 'Lora', Georgia, 'Times New Roman', serif;
+
+  --edge: clamp(18px, 5vw, 40px);       /* page side padding */
+  --space-section: clamp(52px, 9vw, 100px);
+}
+
+/* ---- Reset and base ---- */
+*, *::before, *::after { box-sizing: border-box; }
+html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  background: var(--milk);
+  color: var(--tea);
+  font-family: var(--font-text);
+  font-size: 1.0625rem;
+  line-height: 1.65;
+}
+h1, h2, h3 { font-family: var(--font-ui); font-weight: 700; line-height: 1.1; margin: 0; letter-spacing: -0.02em; }
+p { margin: 0; }
+ul, ol { margin: 0; padding: 0; list-style: none; }
+img, svg { max-width: 100%; }
+button, input { font: inherit; color: inherit; }
+a { color: inherit; }
+fieldset { border: 0; margin: 0; padding: 0; min-width: 0; }
+legend { padding: 0; }
+
+:focus-visible { outline: 3px solid var(--berry); outline-offset: 3px; border-radius: 6px; }
+
+.visually-hidden {
+  position: absolute !important;
+  width: 1px; height: 1px;
+  margin: -1px; padding: 0; border: 0;
+  overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.skip-link {
+  position: absolute; left: 12px; top: -80px; z-index: 50;
+  background: var(--tea); color: var(--milk);
+  font-family: var(--font-ui); font-weight: 500;
+  padding: 10px 16px; border-radius: 999px; text-decoration: none;
+}
+.skip-link:focus { top: 12px; }
+
+.noscript { padding: 20px var(--edge); background: var(--pink-soft); font-family: var(--font-ui); }
+
+/* ---- Buttons ---- */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  min-height: 46px; padding: 0.6rem 1.3rem;
+  font-family: var(--font-ui); font-weight: 500; font-size: 0.95rem; line-height: 1.2;
+  color: var(--tea); background: transparent;
+  border: 2px solid var(--tea); border-radius: 999px;
+  text-decoration: none; cursor: pointer;
+  transition: background-color 0.15s ease, transform 0.15s ease, color 0.15s ease;
+}
+.btn:hover { background: var(--pink-soft); }
+.btn:active { transform: translateY(1px); }
+.btn:disabled { opacity: 0.6; cursor: wait; }
+.btn--primary { background: var(--berry); border-color: var(--berry); color: #fff; }
+.btn--primary:hover { background: var(--berry-dark); border-color: var(--berry-dark); }
+.btn--big { min-height: 54px; padding: 0.8rem 1.7rem; font-size: 1.05rem; }
+.btn--small { min-height: 40px; padding: 0.4rem 1rem; font-size: 0.85rem; }
+.btn--wide { width: 100%; }
+.btn--quiet { border-color: transparent; text-decoration: underline; text-underline-offset: 4px; }
+.btn--quiet:hover { background: transparent; text-decoration-thickness: 2px; }
+.btn.is-done { background: var(--matcha); }
+
+/* ---- Header ---- */
+.site-header {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
+  gap: 4px 16px;
+  padding: 14px var(--edge) 6px;
+  max-width: 1200px; margin: 0 auto;
+}
+.brand {
+  display: inline-flex; align-items: center; gap: 10px;
+  font-family: var(--font-ui); font-weight: 700; font-size: 1.3rem; letter-spacing: -0.02em;
+  text-decoration: none; padding: 6px 0;
+}
+.brand__pearls { display: inline-flex; }
+.brand__pearls i { width: 11px; height: 11px; border-radius: 50%; background: var(--tea); margin-right: -3px; box-shadow: inset -2px -2px 0 rgba(255,255,255,0.18); }
+.site-header nav ul { display: flex; flex-wrap: wrap; gap: 2px; margin-left: -12px; }
+.site-header nav a {
+  display: inline-block; padding: 10px 12px;
+  font-family: var(--font-ui); font-weight: 500; font-size: 0.92rem;
+  text-decoration: none; border-radius: 999px;
+}
+.site-header nav a:hover { background: var(--pink-soft); }
+
+/* ---- Section basics ---- */
+.section-head { max-width: 40rem; margin-bottom: 32px; }
+.section-head h2 { font-size: clamp(2rem, 6.5vw, 3.4rem); letter-spacing: -0.03em; }
+.section-head p { margin-top: 10px; max-width: 34rem; }
+
+.pearls {
+  height: 24px;
+  background: radial-gradient(circle at center, var(--tea) 0 6.5px, transparent 7px) 0 50% / 28px 24px repeat-x;
+  opacity: 0.9;
+}
+.pearls--footer { opacity: 0.35; margin-bottom: 20px; }
+
+/* ==========================================================================
+   Hero
+   ========================================================================== */
+.hero {
+  display: grid; gap: 28px;
+  max-width: 1200px; margin: 0 auto;
+  padding: clamp(24px, 6vw, 64px) var(--edge) clamp(36px, 7vw, 72px);
+}
+.hero__text { align-self: center; }
+.hero h1 {
+  font-size: clamp(3rem, 14.5vw, 7.4rem);
+  line-height: 0.92; letter-spacing: -0.05em;
+  max-width: 9ch;
+}
+.hero__lead { margin-top: 28px; font-size: 1.2rem; max-width: 30rem; }
+.hero__actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 28px; }
+
+.hero__stage {
+  position: relative;
+  display: grid; justify-items: center; align-content: center;
+  padding: 8px 0 4px;
+}
+/* A plain pink circle behind the cup, like a sticker. */
+.hero__stage::before {
+  content: ''; position: absolute; z-index: 0;
+  width: min(86%, 440px); aspect-ratio: 1; border-radius: 50%;
+  background: var(--pink); top: 50%; left: 50%; transform: translate(-50%, -52%);
+}
+.hero__cup-button {
+  position: relative; z-index: 1;
+  width: min(250px, 62vw); padding: 0; background: none; border: 0; cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.hero__cup-button > span { display: block; }
+.hero__hint { position: relative; z-index: 1; margin-top: 10px; font-family: var(--font-ui); font-size: 0.85rem; font-weight: 500; }
+
+/* ==========================================================================
+   The cup (SVG)
+   ========================================================================== */
+.cup { display: block; width: 100%; height: auto; overflow: visible; }
+.cup__liquid { transition: fill 0.5s ease; }
+.cup__foam { opacity: 0; transform: translateY(-10px); transition: opacity 0.35s ease, transform 0.35s ease; }
+.cup__foam.is-on { opacity: 1; transform: none; }
+
+.piece--drop { animation: drop 0.6s cubic-bezier(0.3, 0.7, 0.4, 1) both; animation-delay: var(--delay, 0ms); }
+@keyframes drop {
+  from { transform: translateY(var(--fall, -150px)); opacity: 0; }
+  12%  { opacity: 1; }
+  78%  { transform: translateY(2px); }
+  to   { transform: translateY(0); opacity: 1; }
+}
+.cup--shake { transform-origin: 50% 92%; animation: shake 0.6s ease; }
+@keyframes shake {
+  0%, 100% { transform: rotate(0); }
+  20% { transform: rotate(-4deg); }
+  45% { transform: rotate(3.5deg); }
+  70% { transform: rotate(-2deg); }
+}
+
+/* ==========================================================================
+   Builder
+   ========================================================================== */
+.builder { background: var(--pink-soft); padding: var(--space-section) var(--edge); }
+.builder__inner { max-width: 1100px; margin: 0 auto; }
+.builder__layout { display: grid; gap: 22px; align-items: start; }
+
+.preview {
+  position: sticky; top: 8px; z-index: 5;
+  display: grid; grid-template-columns: 74px 1fr; gap: 14px; align-items: center;
+  padding: 10px 16px 10px 12px;
+  background: var(--paper);
+  border: 2px solid var(--tea); border-radius: 22px;
+  box-shadow: 4px 4px 0 var(--tea);
+}
+.preview__summary h3 { font-size: 1.05rem; line-height: 1.2; text-transform: none; }
+.preview__summary p { font-size: 0.9rem; line-height: 1.4; margin: 3px 0 8px; }
+
+.group { margin-bottom: 30px; }
+.group legend { font-family: var(--font-ui); font-weight: 700; font-size: 1.2rem; margin-bottom: 4px; }
+.group__hint { font-size: 0.92rem; margin-bottom: 8px; }
+.group legend + .chips { margin-top: 10px; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+
+/* A chip is a label wrapped around a real (hidden) radio or checkbox, so
+   keyboards and screen readers work as expected. */
+.chip { position: relative; display: inline-block; cursor: pointer; }
+.chip input {
+  position: absolute; width: 1px; height: 1px; margin: -1px; opacity: 0; overflow: hidden;
+}
+.chip__body {
+  display: inline-flex; align-items: center; gap: 8px;
+  min-height: 44px; padding: 0.5rem 1rem;
+  background: var(--paper); color: var(--tea);
+  border: 2px solid var(--tea); border-radius: 999px;
+  font-family: var(--font-ui); font-weight: 500; font-size: 0.92rem; line-height: 1.25;
+  transition: background-color 0.15s ease, color 0.15s ease, transform 0.15s ease;
+}
+.chip:hover .chip__body { transform: translateY(-1px); background: #fff; }
+.chip input:checked + .chip__body { background: var(--tea); color: var(--milk); }
+.chip input:checked + .chip__body::before {
+  content: ''; flex: none; width: 6px; height: 11px; margin: -3px 2px 0 0;
+  border: solid currentColor; border-width: 0 2.5px 2.5px 0; transform: rotate(45deg);
+}
+.chip input:focus-visible + .chip__body { outline: 3px solid var(--berry); outline-offset: 3px; }
+.chip input:disabled + .chip__body { opacity: 0.45; border-style: dashed; cursor: not-allowed; }
+.chip:has(input:disabled) { cursor: not-allowed; }
+.dot { flex: none; width: 15px; height: 15px; border-radius: 50%; background: var(--c); border: 1.5px solid rgba(62, 36, 25, 0.45); }
+.group--compact .chip__body { min-width: 64px; justify-content: center; }
+
+/* ==========================================================================
+   Surprise me
+   ========================================================================== */
+.surprise { background: var(--matcha); padding: var(--space-section) var(--edge); }
+.surprise__inner { max-width: 900px; margin: 0 auto; }
+#surprise-result { margin-top: 28px; }
+.idea {
+  display: grid; gap: 18px; align-items: center;
+  padding: 18px;
+  background: var(--paper); border: 2px solid var(--tea); border-radius: 26px;
+  box-shadow: 5px 5px 0 var(--tea);
+}
+.surprise__cup { width: 108px; justify-self: start; }
+.idea h3 { font-size: 1.5rem; letter-spacing: -0.03em; }
+.idea__meta { font-family: var(--font-ui); font-weight: 500; font-size: 0.92rem; color: var(--sugar); margin: 4px 0 10px; }
+.idea__text > p:not(.idea__meta) { max-width: 36rem; }
+.idea__actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 16px; }
+
+/* ==========================================================================
+   Survey
+   ========================================================================== */
+.survey { padding: var(--space-section) var(--edge); }
+.survey__inner { max-width: 760px; margin: 0 auto; }
+.survey-form, .thanks {
+  background: var(--paper);
+  border: 2px solid var(--tea); border-radius: 28px;
+  padding: clamp(18px, 4vw, 34px);
+}
+.survey-form__lead { font-style: italic; margin-bottom: 22px; }
+.question { margin-bottom: 26px; }
+.question legend { font-family: var(--font-ui); font-weight: 700; font-size: 1.05rem; line-height: 1.35; margin-bottom: 12px; max-width: 34rem; }
+.share { margin: 8px 0 20px; padding-top: 20px; border-top: 2px dotted rgba(62, 36, 25, 0.35); }
+.check { display: flex; gap: 12px; align-items: flex-start; cursor: pointer; font-family: var(--font-ui); font-weight: 500; }
+.check input { flex: none; width: 24px; height: 24px; margin: 1px 0 0; accent-color: var(--berry); }
+.share__hint { margin: 6px 0 0 36px; font-size: 0.92rem; }
+.privacy { font-size: 0.95rem; font-style: italic; margin-bottom: 18px; max-width: 34rem; }
+.form-status { min-height: 1.6em; margin-top: 12px; font-family: var(--font-ui); font-size: 0.92rem; }
+.form-status--error { color: #A3262E; font-weight: 500; }
+.thanks h3 { font-size: 1.8rem; letter-spacing: -0.03em; }
+.thanks p { margin-top: 10px; }
+.thanks__actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-top: 22px; }
+
+/* ==========================================================================
+   Results
+   ========================================================================== */
+.results { background: var(--milk-deep); padding: var(--space-section) var(--edge); }
+.results__inner { max-width: 1000px; margin: 0 auto; }
+.results__summary { font-family: var(--font-ui); font-weight: 500; margin-bottom: 8px; }
+.results__caveat { margin-top: 12px; font-style: italic; max-width: 40rem; }
+.loading { font-family: var(--font-ui); }
+
+.charts { display: grid; gap: 0 56px; }
+.charts__heading { grid-column: 1 / -1; font-size: 1.5rem; margin: 30px 0 14px; }
+.charts__heading:first-child { margin-top: 0; }
+.chart { margin: 0 0 26px; padding-bottom: 26px; border-bottom: 2px dotted rgba(62, 36, 25, 0.35); }
+.chart figcaption h3 { font-size: 1.12rem; line-height: 1.3; letter-spacing: -0.01em; }
+.chart figcaption p { font-size: 0.95rem; margin: 4px 0 14px; }
+.chart__takeaway { margin-top: 12px; font-family: var(--font-ui); font-weight: 500; font-size: 0.92rem; }
+.chart__note { margin-top: 4px; font-size: 0.88rem; color: #5B4234; }
+.chart__empty { font-style: italic; }
+
+.bars { display: grid; gap: 11px; }
+.bar { display: grid; grid-template-columns: 1fr auto; gap: 3px 12px; align-items: baseline; }
+.bar__label { font-family: var(--font-ui); font-weight: 500; font-size: 0.9rem; line-height: 1.3; }
+.bar__value { font-family: var(--font-ui); font-weight: 700; font-size: 0.9rem; white-space: nowrap; }
+.bar__count { font-weight: 400; color: #5B4234; }
+.bar__track { grid-column: 1 / -1; display: block; height: 14px; border-radius: 999px; background: rgba(62, 36, 25, 0.12); overflow: hidden; }
+.bar__fill { display: block; height: 100%; width: var(--w); border-radius: 999px; background: var(--bar, var(--sugar)); box-shadow: inset 0 0 0 1.5px rgba(62, 36, 25, 0.4); }
+.bar--top .bar__fill { background: var(--bar, var(--berry)); }
+.bar__you {
+  display: inline-block; margin-left: 8px; padding: 0 9px;
+  background: var(--tea); color: var(--milk);
+  font-size: 0.72rem; font-weight: 500; line-height: 1.7; border-radius: 999px; vertical-align: 1px;
+}
+
+.empty { max-width: 40rem; padding: 26px; border: 2px dashed var(--tea); border-radius: 26px; background: rgba(255, 250, 243, 0.6); }
+.empty h3 { font-size: 1.5rem; letter-spacing: -0.03em; }
+.empty p { margin-top: 8px; }
+.empty__actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-top: 20px; }
+.meter { margin-top: 16px; }
+.meter p { font-family: var(--font-ui); font-weight: 500; font-size: 0.92rem; margin-top: 8px; }
+.pearl-meter { display: flex; flex-wrap: wrap; gap: 6px; }
+.pearl-meter li { width: 22px; height: 22px; border-radius: 50%; border: 2px dashed var(--tea); }
+.pearl-meter li.is-filled { background: var(--tea); border-style: solid; box-shadow: inset -3px -3px 0 rgba(255,255,255,0.15); }
+
+/* The demo preview must never be mistaken for real findings. */
+.demo-banner {
+  display: grid; gap: 6px; justify-items: start; margin-bottom: 28px; padding: 16px 18px;
+  border: 2px dashed var(--tea); border-radius: 18px;
+  background: repeating-linear-gradient(135deg, #FFE7A0 0 14px, #FFF2C7 14px 28px);
+}
+.demo-banner strong { font-family: var(--font-ui); font-size: 1.1rem; }
+.charts--demo .bar__fill {
+  background-image: repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.45) 0 5px, transparent 5px 10px);
+  background-color: var(--bar, var(--sugar));
+}
+.charts--demo .bar--top .bar__fill { background-color: var(--bar, var(--berry)); }
+
+/* ==========================================================================
+   About
+   ========================================================================== */
+.about { background: var(--tea); color: var(--milk); padding: var(--space-section) var(--edge); }
+.about__inner { max-width: 760px; margin: 0 auto; }
+.about h2 { font-size: clamp(2rem, 6.5vw, 3.4rem); letter-spacing: -0.03em; color: var(--pink); margin-bottom: 24px; }
+.about__body { max-width: 38rem; font-size: 1.12rem; line-height: 1.75; }
+.about__body p + p { margin-top: 1.1em; }
+.about__actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 32px; }
+.about .btn--primary { background: var(--pink); border-color: var(--pink); color: var(--tea); }
+.about .btn--primary:hover { background: #fff; border-color: #fff; }
+.btn--on-dark { color: var(--milk); border-color: var(--milk); }
+.btn--on-dark:hover { background: rgba(255, 255, 255, 0.14); }
+.about :focus-visible { outline-color: var(--pink); }
+.about__status { margin-top: 14px; font-family: var(--font-ui); font-size: 0.92rem; min-height: 1.4em; }
+
+/* ---- Footer ---- */
+.site-footer { background: var(--tea); color: var(--milk); padding: 0 var(--edge) 40px; }
+.site-footer .pearls { background-image: radial-gradient(circle at center, var(--milk) 0 6.5px, transparent 7px); margin: 0 calc(var(--edge) * -1) 22px; }
+.site-footer p { max-width: 760px; margin: 0 auto; font-family: var(--font-ui); font-size: 0.9rem; }
+
+/* ==========================================================================
+   Wider screens
+   ========================================================================== */
+@media (min-width: 640px) {
+  .idea { grid-template-columns: 130px 1fr; padding: 24px; gap: 28px; }
+  .surprise__cup { width: 130px; }
+}
+
+@media (min-width: 900px) {
+  .hero { grid-template-columns: 1.15fr 0.85fr; gap: 32px; min-height: min(82vh, 760px); }
+  .hero h1 { max-width: 7ch; }
+  .hero__cup-button { width: min(310px, 28vw); }
+
+  .builder__layout { grid-template-columns: 290px 1fr; gap: 56px; }
+  .preview {
+    top: 24px; grid-template-columns: 1fr; justify-items: center; text-align: center;
+    padding: 28px 22px 24px; border-radius: 30px; box-shadow: 6px 6px 0 var(--tea);
+  }
+  .preview__cup { width: 215px; }
+  .preview__summary h3 { font-size: 1.3rem; }
+  .preview__summary p { font-size: 0.98rem; margin: 6px 0 14px; }
+
+  .charts { grid-template-columns: 1fr 1fr; }
+}
+
+/* ==========================================================================
+   Respect people who ask their devices for less motion
+   ========================================================================== */
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
+}

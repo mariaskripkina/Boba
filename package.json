@@ -1,0 +1,14 @@
+{
+  "name": "boba-lab",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Boba Lab: build a boba tea, take a short survey, and see how your taste compares.",
+  "type": "module",
+  "scripts": {
+    "dev": "node dev-server.js",
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

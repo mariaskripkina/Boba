@@ -1,0 +1,16 @@
+# Dependencies (none yet, but ready if you add some later)
+node_modules/
+
+# Secrets: never commit these. Real keys live in Vercel's settings, not in code.
+.env
+.env.*
+!.env.example
+
+# Vercel's local link folder
+.vercel/
+
+# Mac / editor clutter
+.DS_Store
+*.log
+.idea/
+.vscode/
