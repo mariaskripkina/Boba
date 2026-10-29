@@ -1,9 +1,15 @@
 // "Build Your Boba": the choices (tea, flavor, sweetness, toppings) and the
 // live summary. All it does is read and change the shared drink in state.js.
+//
+// Words come from the language files, so when the language changes the
+// choices are drawn again in the new language. The drink itself is kept as ids
+// in state.js, so nothing the visitor picked is lost.
 
 import { h } from './dom.js';
-import { TEAS, FLAVORS, SWEETNESS, TOPPINGS, MAX_TOPPINGS, byId, drinkName, orderText } from './menu.js';
+import { TEAS, FLAVORS, SWEETNESS, TOPPINGS, MAX_TOPPINGS } from './menu.js';
+import { teaName, flavorName, sweetLabel, toppingName, drinkName, orderText, lower } from './menu-text.js';
 import { getDrink, setDrink, subscribe } from './state.js';
+import { t, onLanguageChange } from './i18n/index.js';
 
 // One selectable pill. `type` is 'radio' (pick one) or 'checkbox' (pick several).
 function chip({ type, name, value, label, color }) {
@@ -16,10 +22,10 @@ function chip({ type, name, value, label, color }) {
   );
 }
 
-function group(title, hint, chips, extraClass = '') {
+function group(key, title, hint, chips, extraClass = '') {
   return h('fieldset', { class: `group ${extraClass}`.trim() },
     h('legend', {}, title),
-    hint ? h('p', { class: 'group__hint', id: `hint-${title.replace(/\W+/g, '-').toLowerCase()}` }, hint) : null,
+    hint ? h('p', { class: 'group__hint', id: `hint-${key}` }, hint) : null,
     h('div', { class: 'chips' }, chips),
   );
 }
@@ -31,16 +37,18 @@ export function initBuilder() {
   const copyButton = document.getElementById('copy-order');
   const copyStatus = document.getElementById('copy-status');
 
-  controls.replaceChildren(
-    group('Tea base', null,
-      TEAS.map((t) => chip({ type: 'radio', name: 'tea', value: t.id, label: t.name, color: t.color }))),
-    group('Flavor', null,
-      FLAVORS.map((f) => chip({ type: 'radio', name: 'flavor', value: f.id, label: f.name, color: f.tint }))),
-    group('Sweetness', null,
-      SWEETNESS.map((s) => chip({ type: 'radio', name: 'sweet', value: s.id, label: s.label })), 'group--compact'),
-    group('Toppings', `Pick up to ${MAX_TOPPINGS}.`,
-      TOPPINGS.map((t) => chip({ type: 'checkbox', name: 'toppings', value: t.id, label: t.name, color: t.color }))),
-  );
+  function buildControls() {
+    controls.replaceChildren(
+      group('tea', t('builder.groupTea'), null,
+        TEAS.map((x) => chip({ type: 'radio', name: 'tea', value: x.id, label: teaName(x.id), color: x.color }))),
+      group('flavor', t('builder.groupFlavor'), null,
+        FLAVORS.map((x) => chip({ type: 'radio', name: 'flavor', value: x.id, label: flavorName(x.id), color: x.tint }))),
+      group('sweetness', t('builder.groupSweetness'), null,
+        SWEETNESS.map((x) => chip({ type: 'radio', name: 'sweet', value: x.id, label: sweetLabel(x.id) })), 'group--compact'),
+      group('toppings', t('builder.groupToppings'), t('builder.toppingsHint', { max: MAX_TOPPINGS }),
+        TOPPINGS.map((x) => chip({ type: 'checkbox', name: 'toppings', value: x.id, label: toppingName(x.id), color: x.color }))),
+    );
+  }
 
   // When someone clicks a choice, update the shared drink.
   controls.addEventListener('change', (event) => {
@@ -65,13 +73,24 @@ export function initBuilder() {
     }
 
     nameEl.textContent = drinkName(drink);
-    const sweet = byId(SWEETNESS, drink.sweet);
-    const tops = drink.toppings.map((id) => byId(TOPPINGS, id)?.name).filter(Boolean);
-    detailEl.textContent =
-      `${sweet ? sweet.label : drink.sweet + '%'} sweet, ` + (tops.length ? tops.join(', ').toLowerCase() : 'no toppings');
+    const tops = drink.toppings.map((id) => lower(toppingName(id)));
+    detailEl.textContent = t('builder.detail', {
+      sweet: sweetLabel(drink.sweet),
+      toppings: tops.length ? tops.join(', ') : t('builder.noToppings'),
+    });
   }
+
+  buildControls();
   subscribe(render);
   render(getDrink());
+
+  // New language: draw the choices again in it, then show the same drink.
+  onLanguageChange(() => {
+    buildControls();
+    render(getDrink());
+    copyButton.classList.remove('is-done');
+    copyButton.textContent = t('builder.copy');
+  });
 
   // "Copy my order": handy for pasting into a chat or reading out at the counter.
   copyButton.addEventListener('click', async () => {
@@ -88,11 +107,11 @@ export function initBuilder() {
       try { copied = document.execCommand('copy'); } catch { /* ignore */ }
       area.remove();
     }
-    copyStatus.textContent = copied ? `Copied: ${text}` : 'Could not copy. Select the text above instead.';
+    copyStatus.textContent = copied ? t('builder.copiedStatus', { text }) : t('builder.copyFailed');
     copyButton.classList.toggle('is-done', copied);
-    copyButton.textContent = copied ? 'Copied' : 'Copy my order';
+    copyButton.textContent = copied ? t('builder.copied') : t('builder.copy');
     setTimeout(() => {
-      copyButton.textContent = 'Copy my order';
+      copyButton.textContent = t('builder.copy');
       copyButton.classList.remove('is-done');
     }, 2200);
   });

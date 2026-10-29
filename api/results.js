@@ -76,7 +76,7 @@ export function applyMinimum(totals, min) {
 
 export default async function handler(req, res) {
   if (req.method !== 'GET') {
-    return sendJson(res, 405, { error: 'Use GET.' }, { Allow: 'GET' });
+    return sendJson(res, 405, { error: 'Use GET.', code: 'method_not_allowed' }, { Allow: 'GET' });
   }
 
   const min = Math.max(1, Number.parseInt(process.env.MIN_RESPONSES, 10) || DEFAULT_MIN);
@@ -99,6 +99,6 @@ export default async function handler(req, res) {
     );
   } catch (error) {
     console.error('readTotals failed:', error.message);
-    return sendJson(res, 500, { error: 'Could not load results right now.' });
+    return sendJson(res, 500, { error: 'Could not load results right now.', code: 'results_failed' });
   }
 }

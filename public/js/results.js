@@ -5,11 +5,17 @@
 //   2. If there is not enough real data, we say so. We never fill the gap.
 //   3. The "demo" preview uses made-up numbers and is labeled DEMO everywhere
 //      it appears, so nobody can mistake it for real findings.
+//
+// Language: the numbers always arrive keyed by internal ids ("try", "europe").
+// Only the labels you read are translated, so switching language never changes
+// a number. The charts are simply drawn again.
 
 import { h, local } from './dom.js';
-import { QUESTIONS, REGIONS, COMPARE_QUESTIONS } from './schema.js';
+import { QUESTIONS, COMPARE_QUESTIONS } from './schema.js';
 import { TEAS, FLAVORS, SWEETNESS, TOPPINGS } from './menu.js';
+import { teaName, flavorName, sweetLabel, toppingName, lower } from './menu-text.js';
 import { MY_ANSWERS_KEY } from './survey.js';
+import { t, onLanguageChange } from './i18n/index.js';
 
 // Made-up numbers, only ever shown behind the "Preview with demo data" button.
 const DEMO = {
@@ -29,16 +35,17 @@ const DEMO = {
   },
   // Made up, and deliberately NOT using real region names: invented numbers next
   // to "Europe" or "East Asia" could be mistaken for claims about real people.
+  // `labelKey` points at the (translated) "Region A (demo)" text.
   regional: {
     min: 10,
     questions: {
       sweetness: [
-        { region: 'demo-a', label: 'Region A (demo)', n: 34, shares: { 0: 9, 30: 29, 50: 35, 70: 18, 100: 9 } },
-        { region: 'demo-b', label: 'Region B (demo)', n: 26, shares: { 0: 4, 30: 23, 50: 38, 70: 23, 100: 12 } },
+        { region: 'demo-a', labelKey: 'results.demoRegionA', n: 34, shares: { 0: 9, 30: 29, 50: 35, 70: 18, 100: 9 } },
+        { region: 'demo-b', labelKey: 'results.demoRegionB', n: 26, shares: { 0: 4, 30: 23, 50: 38, 70: 23, 100: 12 } },
       ],
       adventure: [
-        { region: 'demo-a', label: 'Region A (demo)', n: 34, shares: { skip: 12, ask: 32, try: 38, seek: 18 } },
-        { region: 'demo-b', label: 'Region B (demo)', n: 26, shares: { skip: 19, ask: 31, try: 35, seek: 15 } },
+        { region: 'demo-a', labelKey: 'results.demoRegionA', n: 34, shares: { skip: 12, ask: 32, try: 38, seek: 18 } },
+        { region: 'demo-b', labelKey: 'results.demoRegionB', n: 26, shares: { skip: 19, ask: 31, try: 35, seek: 15 } },
       ],
     },
   },
@@ -61,7 +68,7 @@ function chart({ title, explain, rows, denominator, note, colorTop = true }) {
           return h('li', { class: `bar${isTop ? ' bar--top' : ''}` },
             h('span', { class: 'bar__label' },
               row.label,
-              row.mine ? h('span', { class: 'bar__you' }, 'You') : null,
+              row.mine ? h('span', { class: 'bar__you' }, t('results.you')) : null,
             ),
             h('span', { class: 'bar__track', 'aria-hidden': 'true' },
               h('span', { class: 'bar__fill', style: { '--w': `${Math.max(share, row.count ? 2 : 0)}%`, ...(row.color ? { '--bar': row.color } : {}) } }),
@@ -70,11 +77,11 @@ function chart({ title, explain, rows, denominator, note, colorTop = true }) {
           );
         }),
       )
-    : h('p', { class: 'chart__empty' }, 'Not enough answers to show this one yet.');
+    : h('p', { class: 'chart__empty' }, t('results.chartEmpty'));
 
   const top = rows.find((r) => r.count === topCount && topCount > 0);
   const takeaway = enough && top
-    ? h('p', { class: 'chart__takeaway' }, `Most common: ${top.label.toLowerCase()} (${percent(top.count, denominator)}%).`)
+    ? h('p', { class: 'chart__takeaway' }, t('results.mostCommon', { label: lower(top.label), percent: percent(top.count, denominator) }))
     : null;
 
   return h('figure', { class: 'chart' },
@@ -90,15 +97,15 @@ function questionCharts(data, mine) {
     const counts = data.answers[q.id] || {};
     const denominator = Object.values(counts).reduce((a, b) => a + b, 0);
     return chart({
-      title: q.title,
-      explain: q.explain,
+      title: t(`survey.q.${q.id}.title`),
+      explain: t(`survey.q.${q.id}.explain`),
       denominator,
       rows: q.options.map((o) => ({
-        label: o.label,
+        label: t(`survey.q.${q.id}.options.${o.value}`),
         count: counts[o.value] || 0,
         mine: mine?.answers?.[q.id] === o.value,
       })),
-      note: denominator ? `${denominator} people answered this question.` : null,
+      note: denominator ? t('results.answeredQuestion', { count: denominator }) : null,
     });
   });
 }
@@ -109,38 +116,38 @@ function drinkCharts(data, mine) {
   const my = mine?.drink;
   const enough = n >= data.min && Object.keys(d.tea || {}).length > 0;
   if (!enough) {
-    return [h('p', { class: 'chart__empty' }, `Drink charts appear once ${data.min} people share their drink (${n} so far).`)];
+    return [h('p', { class: 'chart__empty' }, t('results.drinksNotEnough', { min: data.min, n }))];
   }
-  const toppingRows = [...TOPPINGS.map((t) => ({ id: t.id, label: t.name })), { id: 'none', label: 'No toppings' }];
+  const toppingRows = [...TOPPINGS.map((x) => ({ id: x.id, label: toppingName(x.id) })), { id: 'none', label: t('results.noToppings') }];
   return [
     chart({
-      title: 'Tea bases people built',
-      explain: 'The tea under everyone\'s drink.',
+      title: t('results.teaTitle'),
+      explain: t('results.teaExplain'),
       denominator: n,
-      rows: TEAS.map((t) => ({ label: t.name, count: d.tea[t.id] || 0, color: t.color, mine: my?.tea === t.id })),
+      rows: TEAS.map((x) => ({ label: teaName(x.id), count: d.tea[x.id] || 0, color: x.color, mine: my?.tea === x.id })),
       colorTop: false,
     }),
     chart({
-      title: 'Flavors people built',
-      explain: 'Which flavors showed up most.',
+      title: t('results.flavorTitle'),
+      explain: t('results.flavorExplain'),
       denominator: n,
-      rows: FLAVORS.map((f) => ({ label: f.name, count: d.flavor[f.id] || 0, color: f.tint, mine: my?.flavor === f.id })),
+      rows: FLAVORS.map((x) => ({ label: flavorName(x.id), count: d.flavor[x.id] || 0, color: x.tint, mine: my?.flavor === x.id })),
       colorTop: false,
     }),
     chart({
-      title: 'Sweetness people chose',
-      explain: 'How sweet the shared drinks were.',
+      title: t('results.sweetTitle'),
+      explain: t('results.sweetExplain'),
       denominator: n,
-      rows: SWEETNESS.map((s) => ({ label: s.label, count: d.sweet[s.id] || 0, mine: my?.sweet === s.id })),
+      rows: SWEETNESS.map((x) => ({ label: sweetLabel(x.id), count: d.sweet[x.id] || 0, mine: my?.sweet === x.id })),
     }),
     chart({
-      title: 'Toppings people added',
-      explain: 'Each drink can have up to three, so these add up to more than 100%.',
+      title: t('results.toppingTitle'),
+      explain: t('results.toppingExplain'),
       denominator: n,
-      rows: toppingRows.map((t) => ({
-        label: t.label,
-        count: d.topping[t.id] || 0,
-        mine: my ? (t.id === 'none' ? my.toppings.length === 0 : my.toppings.includes(t.id)) : false,
+      rows: toppingRows.map((x) => ({
+        label: x.label,
+        count: d.topping[x.id] || 0,
+        mine: my ? (x.id === 'none' ? my.toppings.length === 0 : my.toppings.includes(x.id)) : false,
       })),
     }),
   ];
@@ -153,23 +160,23 @@ function drinkCharts(data, mine) {
 // recomputes or "fills in" anything: if a group is not in the data, it is not drawn.
 
 function regionLabel(group) {
-  if (group.label) return group.label; // demo groups carry their own made-up label
-  if (group.region === 'other') return 'Other regions combined';
-  return REGIONS.find((r) => r.id === group.region)?.label ?? group.region;
+  if (group.labelKey) return t(group.labelKey); // demo groups: made-up "Region A (demo)"
+  if (group.region === 'other') return t('results.regionOther');
+  return t(`survey.regions.${group.region}`);
 }
 
 function regionBlock(question, group, mine) {
   return h('div', { class: 'region-block' },
     h('h4', {},
       regionLabel(group),
-      mine?.region && mine.region === group.region ? h('span', { class: 'bar__you' }, 'Your region') : null,
+      mine?.region && mine.region === group.region ? h('span', { class: 'bar__you' }, t('results.yourRegion')) : null,
     ),
-    h('p', { class: 'region-block__n' }, `${group.n} people answered`),
+    h('p', { class: 'region-block__n' }, t('results.regionPeople', { count: group.n })),
     h('ul', { class: 'bars' },
       question.options.map((option) => {
         const share = group.shares[option.value] || 0;
         return h('li', { class: 'bar' },
-          h('span', { class: 'bar__label' }, option.label),
+          h('span', { class: 'bar__label' }, t(`survey.q.${question.id}.options.${option.value}`)),
           h('span', { class: 'bar__track', 'aria-hidden': 'true' },
             h('span', { class: 'bar__fill', style: { '--w': `${Math.max(share, share ? 2 : 0)}%` } })),
           h('span', { class: 'bar__value' }, `${share}%`),
@@ -186,29 +193,20 @@ function regionalCharts(data, mine) {
     .map((id) => ({ question: QUESTIONS.find((q) => q.id === id), groups: regional?.questions?.[id] }))
     .filter((item) => item.question && item.groups && item.groups.length > 0);
 
-  const intro = h('p', { class: 'regional__intro' },
-    'People who chose to answer, grouped by the broad part of the world they said they live in. ',
-    'A region is a huge and varied place, and these are small snapshots of this survey\'s participants. ',
-    'They are not a statement about any country or culture.');
+  const intro = h('p', { class: 'regional__intro' }, t('results.regionIntro'));
 
   if (compared.length === 0) {
-    return [
-      intro,
-      h('p', { class: 'chart__empty regional__empty' },
-        `Regional comparisons appear once at least ${min} people from a region have answered the same question. `
-        + 'Smaller groups are never shown, so no one can be picked out.'),
-    ];
+    return [intro, h('p', { class: 'chart__empty regional__empty' }, t('results.regionEmpty', { min }))];
   }
 
   return [
     intro,
     ...compared.map(({ question, groups }) =>
       h('figure', { class: 'chart chart--regional' },
-        h('figcaption', {}, h('h3', {}, question.title),
-          h('p', {}, 'Each region shows the share of its own participants who chose each answer.')),
+        h('figcaption', {}, h('h3', {}, t(`survey.q.${question.id}.title`)),
+          h('p', {}, t('results.regionExplain'))),
         h('div', { class: 'region-blocks' }, groups.map((group) => regionBlock(question, group, mine))),
-        h('p', { class: 'chart__note' },
-          `Only regions with at least ${min} answers to this question are shown. Percentages are rounded.`),
+        h('p', { class: 'chart__note' }, t('results.regionNote', { min })),
       ),
     ),
   ];
@@ -238,11 +236,11 @@ export function initResults() {
       class: 'btn btn--quiet',
       'aria-pressed': String(active),
       onclick: () => { mode = active ? 'live' : 'demo'; render(); },
-    }, active ? 'Hide the demo' : 'Preview with demo data');
+    }, active ? t('results.hideDemo') : t('results.showDemo'));
   }
 
   function pearlMeter(total, min) {
-    return h('ol', { class: 'pearl-meter', 'aria-label': `${total} of ${min} responses so far` },
+    return h('ol', { class: 'pearl-meter', 'aria-label': t('results.meterAria', { total, min }) },
       Array.from({ length: min }, (_, i) => h('li', { class: i < total ? 'is-filled' : '' })));
   }
 
@@ -252,7 +250,7 @@ export function initResults() {
       h('p', {}, text),
       extra,
       h('div', { class: 'empty__actions' },
-        h('a', { class: 'btn btn--primary', href: '#survey' }, 'Take the survey'),
+        h('a', { class: 'btn btn--primary', href: '#survey' }, t('results.takeSurvey')),
         demoToggle(false),
       ),
     );
@@ -264,16 +262,16 @@ export function initResults() {
     if (mode === 'demo') {
       root.replaceChildren(
         h('div', { class: 'demo-banner', role: 'note' },
-          h('strong', {}, 'Demo data'),
-          h('p', {}, 'These numbers are made up to show how results will look. They are not from real people.'),
+          h('strong', {}, t('results.demoTitle')),
+          h('p', {}, t('results.demoText')),
           demoToggle(true),
         ),
         h('div', { class: 'charts charts--demo' },
-          h('h3', { class: 'charts__heading' }, 'About taste (demo)'),
+          h('h3', { class: 'charts__heading' }, t('results.headingTasteDemo')),
           questionCharts(DEMO, null),
-          h('h3', { class: 'charts__heading' }, 'About the drinks (demo)'),
+          h('h3', { class: 'charts__heading' }, t('results.headingDrinksDemo')),
           drinkCharts(DEMO, null),
-          h('h3', { class: 'charts__heading' }, 'Across regions (demo)'),
+          h('h3', { class: 'charts__heading' }, t('results.headingRegionsDemo')),
           regionalCharts(DEMO, null),
         ),
       );
@@ -281,33 +279,26 @@ export function initResults() {
     }
 
     if (!live) {
-      root.replaceChildren(h('p', { class: 'loading' }, 'Loading results...'));
+      root.replaceChildren(h('p', { class: 'loading' }, t('results.loading')));
       return;
     }
 
     if (live.error) {
-      root.replaceChildren(
-        emptyState('Results are not loading right now', 'Check your connection and reload the page. Your answers are safe.'),
-      );
+      root.replaceChildren(emptyState(t('results.loadErrorTitle'), t('results.loadErrorText')));
       return;
     }
 
     if (!live.configured) {
-      root.replaceChildren(
-        emptyState(
-          'Results are not switched on yet',
-          'The survey is not collecting answers yet, so there is nothing to show. Check back soon.',
-        ),
-      );
+      root.replaceChildren(emptyState(t('results.notOnTitle'), t('results.notOnText')));
       return;
     }
 
     if (!live.ready) {
       root.replaceChildren(
         emptyState(
-          'Not enough answers yet',
-          `Charts appear after ${live.min} people answer, so no single person's choices can be picked out. Be one of them.`,
-          h('div', { class: 'meter' }, pearlMeter(live.total, live.min), h('p', {}, `${live.total} of ${live.min} responses so far`)),
+          t('results.notEnoughTitle'),
+          t('results.notEnoughText', { min: live.min }),
+          h('div', { class: 'meter' }, pearlMeter(live.total, live.min), h('p', {}, t('results.meterText', { total: live.total, min: live.min }))),
         ),
       );
       return;
@@ -315,22 +306,23 @@ export function initResults() {
 
     root.replaceChildren(
       h('p', { class: 'results__summary' },
-        `${live.total} ${live.total === 1 ? 'person has' : 'people have'} answered so far.`,
-        mine ? ' Your own choices are marked "You".' : ''),
+        t('results.summary', { count: live.total }),
+        mine ? t('results.summaryMine') : ''),
       h('div', { class: 'charts' },
-        h('h3', { class: 'charts__heading' }, 'About taste'),
+        h('h3', { class: 'charts__heading' }, t('results.headingTaste')),
         questionCharts(live, mine),
-        h('h3', { class: 'charts__heading' }, 'About the drinks'),
+        h('h3', { class: 'charts__heading' }, t('results.headingDrinks')),
         drinkCharts(live, mine),
-        h('h3', { class: 'charts__heading' }, 'Across regions'),
+        h('h3', { class: 'charts__heading' }, t('results.headingRegions')),
         regionalCharts(live, mine),
       ),
-      h('p', { class: 'results__caveat' },
-        'These results come from people who chose to answer, mostly people who found this page. They are a snapshot, not a study of everyone.'),
+      h('p', { class: 'results__caveat' }, t('results.caveat')),
     );
   }
 
   document.addEventListener('boba:submitted', load);
+  // New language: draw the charts again from the numbers we already have.
+  onLanguageChange(render);
   render();
   load();
 }

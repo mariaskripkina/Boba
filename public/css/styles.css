@@ -11,6 +11,22 @@
 @font-face { font-family: 'Lora'; font-weight: 400 700; font-style: normal; font-display: swap; src: url('/fonts/Lora-Variable.woff') format('woff'); }
 @font-face { font-family: 'Lora'; font-weight: 400 700; font-style: italic; font-display: swap; src: url('/fonts/Lora-Italic-Variable.woff') format('woff'); }
 
+/* ---- Extra letters for Russian and Uzbek (added for the language switcher) ----
+   The faces above only contain Latin letters. These extra faces use the SAME
+   font names but are limited by `unicode-range` to Cyrillic letters and the two
+   Uzbek marks (ʻ and ʼ). The browser picks the right file letter by letter, so
+   English text still uses exactly the same fonts as before, and these files are
+   only downloaded when a page actually contains such letters.
+   They are declared AFTER the faces above on purpose: for overlapping letters,
+   the browser prefers the face declared last.
+   - Headings and buttons ("Poppins" has no Cyrillic): Inter, bundled here.
+   - Body text: Lora's own Cyrillic letters. */
+@font-face { font-family: 'Poppins'; font-weight: 400; font-style: normal; font-display: swap; src: url('/fonts/Inter-Regular-cyr.woff') format('woff'); unicode-range: U+0400-052F, U+2116, U+02BB-02BC; }
+@font-face { font-family: 'Poppins'; font-weight: 500; font-style: normal; font-display: swap; src: url('/fonts/Inter-Medium-cyr.woff') format('woff'); unicode-range: U+0400-052F, U+2116, U+02BB-02BC; }
+@font-face { font-family: 'Poppins'; font-weight: 700; font-style: normal; font-display: swap; src: url('/fonts/Inter-Bold-cyr.woff') format('woff'); unicode-range: U+0400-052F, U+2116, U+02BB-02BC; }
+@font-face { font-family: 'Lora'; font-weight: 400 700; font-style: normal; font-display: swap; src: url('/fonts/Lora-Cyrillic-Variable.woff') format('woff'); unicode-range: U+0400-052F, U+2116, U+02BB-02BC; }
+@font-face { font-family: 'Lora'; font-weight: 400 700; font-style: italic; font-display: swap; src: url('/fonts/Lora-Cyrillic-Italic-Variable.woff') format('woff'); unicode-range: U+0400-052F, U+2116, U+02BB-02BC; }
+
 /* ---- Colors and sizes, in one place ---- */
 :root {
   --milk: #F6EBDD;        /* creamy background */
@@ -115,6 +131,34 @@ legend { padding: 0; }
 }
 .site-header nav a:hover { background: var(--pink-soft); }
 
+/* ---- Language switcher (new) ----
+   Phones: it sits at the right end of the first row, next to the logo, so it is
+   always visible without opening a menu. The page links drop to their own row.
+   Wider screens: it sits beside the logo and the links go to the right.
+   Small screens show short codes (EN RU UZ); wide screens show each language's own name. */
+.lang-switch {
+  display: inline-flex; gap: 2px; padding: 3px; margin-left: auto;
+  background: var(--paper); border: 2px solid var(--tea); border-radius: 999px;
+}
+.lang-switch__btn {
+  min-width: 44px; min-height: 40px; padding: 0 12px;
+  font-family: var(--font-ui); font-weight: 500; font-size: 0.85rem; line-height: 1;
+  color: var(--tea); background: transparent; border: 0; border-radius: 999px; cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+.lang-switch__btn:hover { background: var(--pink-soft); }
+.lang-switch__btn[aria-pressed="true"] { background: var(--tea); color: var(--milk); }
+.lang-switch__full { display: none; }
+.site-header nav { flex-basis: 100%; }
+@media (min-width: 720px) {
+  .lang-switch { margin-left: 0; }
+  .site-header nav { flex-basis: auto; margin-left: auto; }
+}
+@media (min-width: 900px) {
+  .lang-switch__short { display: none; }
+  .lang-switch__full { display: inline; }
+}
+
 /* ---- Section basics ---- */
 .section-head { max-width: 40rem; margin-bottom: 32px; }
 .section-head h2 { font-size: clamp(2rem, 6.5vw, 3.4rem); letter-spacing: -0.03em; }
@@ -141,6 +185,17 @@ legend { padding: 0; }
   line-height: 0.92; letter-spacing: -0.05em;
   max-width: 9ch;
 }
+/* Russian and Uzbek have longer words than English ("стаканчике", "Stakaningizda"),
+   so their big title is a little smaller. That keeps it on the screen on phones
+   and out of the cup's way on desktop. English keeps the size above. The sizes
+   come from measuring the longest title word in each language. */
+html:lang(ru) .hero h1 { font-size: clamp(3rem, 14.5vw, 7.4rem); }
+html:lang(uz) .hero h1 { font-size: clamp(2.4rem, 11.4vw, 7.4rem); }
+@media (min-width: 900px) {
+  html:lang(ru) .hero h1 { font-size: clamp(3rem, 8.4vw, 6.2rem); }
+  html:lang(uz) .hero h1 { font-size: clamp(3.2rem, 7vw, 5.4rem); }
+}
+
 .hero__lead { margin-top: 28px; font-size: 1.2rem; max-width: 30rem; }
 .hero__actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 28px; }
 

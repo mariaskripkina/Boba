@@ -1,76 +1,27 @@
 // The survey: its questions, and the rules for what a valid submission looks like.
 //
 // This file is used in two places:
-//   1. In the browser, to draw the questions and the results charts.
+//   1. In the browser, to know which questions and options exist.
 //   2. On the server (api/survey.js), to CHECK every submission before counting it.
 //
 // Never trust the browser. Anyone can send anything to a public API, so the
-// server only accepts answers that exactly match the options listed here.
+// server only accepts answers that exactly match the ids listed here.
+//
+// IDs vs. WORDS: this file holds only ids (like "adventure" and "try"). The
+// words people read ("You see a flavor on the menu...") live in the language
+// files (i18n/locales/*.js). Whatever language someone uses, their answer is
+// the same id, so every language counts into one combined dataset.
+// This file must stay free of any browser-only code, because the server uses it too.
 
 import { TEAS, FLAVORS, SWEETNESS, TOPPINGS, MAX_TOPPINGS } from './menu.js';
 
 export const QUESTIONS = [
-  {
-    id: 'taste',
-    title: 'Which flavor direction sounds best right now?',
-    options: [
-      { value: 'roasted', label: 'Roasted and toasty' },
-      { value: 'floral',  label: 'Floral and light' },
-      { value: 'fruity',  label: 'Fruity and bright' },
-      { value: 'creamy',  label: 'Creamy and sweet' },
-      { value: 'earthy',  label: 'Earthy and grassy' },
-    ],
-    explain: 'The flavor direction people reach for first.',
-  },
-  {
-    id: 'sweetness',
-    title: 'How sweet do you usually order your drink?',
-    options: [
-      { value: '0',   label: 'Not sweet (0%)' },
-      { value: '30',  label: 'Lightly (30%)' },
-      { value: '50',  label: 'Half (50%)' },
-      { value: '70',  label: 'Sweet (70%)' },
-      { value: '100', label: 'Full sweet (100%)' },
-    ],
-    explain: 'Sweetness is one of the biggest differences between people.',
-  },
-  {
-    id: 'texture',
-    title: 'Which texture matters most to you?',
-    options: [
-      { value: 'chewy',  label: 'Chewy, like pearls' },
-      { value: 'jelly',  label: 'Soft and jiggly, like jelly' },
-      { value: 'creamy', label: 'Creamy, like milk foam' },
-      { value: 'fruity', label: 'Juicy, like fruit pieces' },
-      { value: 'smooth', label: 'Smooth, no toppings' },
-    ],
-    explain: 'Texture is a big reason people love or skip boba.',
-  },
-  {
-    id: 'adventure',
-    title: 'You see a flavor on the menu you have never heard of. You...',
-    options: [
-      { value: 'skip',   label: 'Stick with what I know' },
-      { value: 'ask',    label: 'Ask what it tastes like first' },
-      { value: 'try',    label: 'Order it' },
-      { value: 'seek',   label: 'Hope to find something like it' },
-    ],
-    explain: 'How willing people are to try an unfamiliar flavor.',
-  },
-  {
-    id: 'travel',
-    title: 'When you travel, how often do you try local food or drinks you cannot name?',
-    options: [
-      { value: 'rarely',    label: 'Rarely' },
-      { value: 'sometimes', label: 'Sometimes' },
-      { value: 'often',     label: 'Often' },
-      { value: 'always',    label: 'Almost always' },
-    ],
-    explain: 'A quick read on openness to new experiences.',
-  },
+  { id: 'taste',     options: [{ value: 'roasted' }, { value: 'floral' }, { value: 'fruity' }, { value: 'creamy' }, { value: 'earthy' }] },
+  { id: 'sweetness', options: [{ value: '0' }, { value: '30' }, { value: '50' }, { value: '70' }, { value: '100' }] },
+  { id: 'texture',   options: [{ value: 'chewy' }, { value: 'jelly' }, { value: 'creamy' }, { value: 'fruity' }, { value: 'smooth' }] },
+  { id: 'adventure', options: [{ value: 'skip' }, { value: 'ask' }, { value: 'try' }, { value: 'seek' }] },
+  { id: 'travel',    options: [{ value: 'rarely' }, { value: 'sometimes' }, { value: 'often' }, { value: 'always' }] },
 ];
-
-export const MIN_ANSWERS_NOTE = 'Answer any question you like. Skipping is fine.';
 
 // ---- the optional "part of the world" question ------------------------------
 //
@@ -78,26 +29,21 @@ export const MIN_ANSWERS_NOTE = 'Answer any question you like. Skipping is fine.
 // person, but a world region cannot. The list is fixed, so the server only
 // accepts these exact ids.
 export const REGIONS = [
-  { id: 'east-asia',      label: 'East Asia' },
-  { id: 'southeast-asia', label: 'Southeast Asia' },
-  { id: 'south-asia',     label: 'South Asia' },
-  { id: 'central-asia',   label: 'Central Asia and Caucasus' },
-  { id: 'mena',           label: 'Middle East and North Africa' },
-  { id: 'sub-saharan',    label: 'Sub-Saharan Africa' },
-  { id: 'europe',         label: 'Europe' },
-  { id: 'north-america',  label: 'North America' },
-  { id: 'latin-america',  label: 'Latin America and Caribbean' },
-  { id: 'oceania',        label: 'Oceania' },
+  { id: 'east-asia' },
+  { id: 'southeast-asia' },
+  { id: 'south-asia' },
+  { id: 'central-asia' },
+  { id: 'mena' },
+  { id: 'sub-saharan' },
+  { id: 'europe' },
+  { id: 'north-america' },
+  { id: 'latin-america' },
+  { id: 'oceania' },
 ];
 
 // "Prefer not to say" is a choice in the form, but it is NOT a region: picking
 // it sends no region at all, exactly like skipping the question.
 export const REGION_PREFER_NOT_TO_SAY = 'prefer-not-to-say';
-
-export const REGION_QUESTION = {
-  title: 'Which part of the world do you live in?',
-  hint: 'Optional. It only adds to broad regional totals.',
-};
 
 // Only these questions are compared across regions. Fewer comparisons means
 // fewer small groups, which keeps the results more honest and more private.

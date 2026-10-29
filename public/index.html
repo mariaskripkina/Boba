@@ -14,20 +14,28 @@
   <link rel="stylesheet" href="/css/styles.css">
   <script type="module" src="/js/main.js"></script>
 </head>
+<!--
+  How the text on this page works: the English words below are the starting
+  point (and what you see without JavaScript). Elements marked data-i18n="key"
+  get replaced by the visitor's language (see js/i18n/). data-i18n-attr does the
+  same for attributes such as aria-label.
+-->
 <body>
-  <a class="skip-link" href="#build">Skip to the builder</a>
+  <a class="skip-link" href="#build" data-i18n="page.skip">Skip to the builder</a>
 
   <header class="site-header">
-    <a class="brand" href="#top" aria-label="Boba Lab, back to the top">
+    <a class="brand" href="#top" aria-label="Boba Lab, back to the top" data-i18n-attr="aria-label:page.brandAria">
       <span class="brand__pearls" aria-hidden="true"><i></i><i></i><i></i></span>
       Boba Lab
     </a>
-    <nav aria-label="Main">
+    <!-- The language switcher is filled in by js/lang-switcher.js -->
+    <div class="lang-switch" id="lang-switch" role="group" aria-label="Language" data-i18n-attr="aria-label:lang.label"></div>
+    <nav aria-label="Main" data-i18n-attr="aria-label:nav.label">
       <ul>
-        <li><a href="#build">Build</a></li>
-        <li><a href="#survey">Survey</a></li>
-        <li><a href="#results">Results</a></li>
-        <li><a href="#about">About</a></li>
+        <li><a href="#build" data-i18n="nav.build">Build</a></li>
+        <li><a href="#survey" data-i18n="nav.survey">Survey</a></li>
+        <li><a href="#results" data-i18n="nav.results">Results</a></li>
+        <li><a href="#about" data-i18n="nav.about">About</a></li>
       </ul>
     </nav>
   </header>
@@ -40,18 +48,18 @@
     <!-- HERO: the cup is the star -->
     <section class="hero" aria-labelledby="hero-title">
       <div class="hero__text">
-        <h1 id="hero-title">What's in your cup?</h1>
-        <p class="hero__lead">Pick a tea, a flavor and a few toppings. Then see how your taste compares with other people's.</p>
+        <h1 id="hero-title" data-i18n="hero.title">What's in your cup?</h1>
+        <p class="hero__lead" data-i18n="hero.lead">Pick a tea, a flavor and a few toppings. Then see how your taste compares with other people's.</p>
         <div class="hero__actions">
-          <a class="btn btn--primary btn--big" href="#build">Build your boba</a>
-          <a class="btn btn--big" href="#survey">Take the survey</a>
+          <a class="btn btn--primary btn--big" href="#build" data-i18n="hero.ctaBuild">Build your boba</a>
+          <a class="btn btn--big" href="#survey" data-i18n="hero.ctaSurvey">Take the survey</a>
         </div>
       </div>
       <div class="hero__stage">
-        <button class="hero__cup-button" id="hero-cup-button" type="button" aria-label="Shake the cup">
+        <button class="hero__cup-button" id="hero-cup-button" type="button" aria-label="Shake the cup" data-i18n-attr="aria-label:hero.cupButtonAria">
           <span id="hero-cup"></span>
         </button>
-        <p class="hero__hint" aria-hidden="true">Tap the cup to shake it</p>
+        <p class="hero__hint" aria-hidden="true" data-i18n="hero.hint">Tap the cup to shake it</p>
       </div>
     </section>
 
@@ -61,17 +69,17 @@
     <section class="builder" id="build" aria-labelledby="build-title">
       <div class="builder__inner">
         <div class="section-head">
-          <h2 id="build-title">Build your boba</h2>
-          <p>Choose as you go. The cup changes with every pick.</p>
+          <h2 id="build-title" data-i18n="builder.title">Build your boba</h2>
+          <p data-i18n="builder.intro">Choose as you go. The cup changes with every pick.</p>
         </div>
 
         <div class="builder__layout">
-          <aside class="preview" aria-label="Your drink">
+          <aside class="preview" aria-label="Your drink" data-i18n-attr="aria-label:builder.previewAria">
             <div class="preview__cup" id="builder-cup"></div>
             <div class="preview__summary">
               <h3 id="drink-name" aria-live="polite"></h3>
               <p id="drink-detail"></p>
-              <button class="btn btn--small" id="copy-order" type="button">Copy my order</button>
+              <button class="btn btn--small" id="copy-order" type="button" data-i18n="builder.copy">Copy my order</button>
               <p class="visually-hidden" id="copy-status" role="status" aria-live="polite"></p>
             </div>
           </aside>
@@ -85,10 +93,10 @@
     <section class="surprise" id="surprise" aria-labelledby="surprise-title">
       <div class="surprise__inner">
         <div class="section-head">
-          <h2 id="surprise-title">Want to try something new?</h2>
-          <p>Get an idea for a combination you might not have tried. They are suggestions, not rankings.</p>
+          <h2 id="surprise-title" data-i18n="surprise.title">Want to try something new?</h2>
+          <p data-i18n="surprise.intro">Get an idea for a combination you might not have tried. They are suggestions, not rankings.</p>
         </div>
-        <button class="btn btn--primary btn--big" id="surprise-button" type="button">Surprise me</button>
+        <button class="btn btn--primary btn--big" id="surprise-button" type="button" data-i18n="surprise.button">Surprise me</button>
         <div id="surprise-result" aria-live="polite"></div>
       </div>
     </section>
@@ -97,8 +105,8 @@
     <section class="survey" id="survey" aria-labelledby="survey-title">
       <div class="survey__inner">
         <div class="section-head">
-          <h2 id="survey-title">Five quick questions</h2>
-          <p>About a minute. Every question is optional, and it is anonymous.</p>
+          <h2 id="survey-title" data-i18n="survey.title">Five quick questions</h2>
+          <p data-i18n="survey.intro">About a minute. Every question is optional, and it is anonymous.</p>
         </div>
         <div id="survey-root"></div>
       </div>
@@ -108,8 +116,8 @@
     <section class="results" id="results" aria-labelledby="results-title">
       <div class="results__inner">
         <div class="section-head">
-          <h2 id="results-title">What people picked</h2>
-          <p>Totals from everyone who has answered, updated as new answers come in.</p>
+          <h2 id="results-title" data-i18n="results.title">What people picked</h2>
+          <p data-i18n="results.intro">Totals from everyone who has answered, updated as new answers come in.</p>
         </div>
         <div id="results-root" aria-live="polite"></div>
       </div>
@@ -118,16 +126,16 @@
     <!-- ABOUT -->
     <section class="about" id="about" aria-labelledby="about-title">
       <div class="about__inner">
-        <h2 id="about-title">Why Boba Lab exists</h2>
+        <h2 id="about-title" data-i18n="about.title">Why Boba Lab exists</h2>
         <div class="about__body">
-          <p>Boba Lab is a personal project about taste. I love boba, and I am curious why one person wants a fully sweet brown sugar milk tea while another wants unsweetened jasmine with grass jelly.</p>
-          <p>Boba is enjoyed in many places and in many ways. When you answer, you add your cup to the picture, from wherever you are.</p>
-          <p>The survey asks for no names or emails. The one place-related question is optional and broad: a part of the world such as "Europe" or "Central Asia and Caucasus", never a country or a city. The site saves only totals, like how many people picked chewy textures, so no one's individual answers exist anywhere.</p>
-          <p>The results come from people who choose to answer, so treat them as a conversation, not a study. The more people take part, the more interesting the picture gets.</p>
+          <p data-i18n="about.p1">Boba Lab is a personal project about taste. I love boba, and I am curious why one person wants a fully sweet brown sugar milk tea while another wants unsweetened jasmine with grass jelly.</p>
+          <p data-i18n="about.p2">Boba is enjoyed in many places and in many ways. When you answer, you add your cup to the picture, from wherever you are.</p>
+          <p data-i18n="about.p3">The survey asks for no names or emails. The one place-related question is optional and broad: a part of the world such as "Europe" or "Central Asia and Caucasus", never a country or a city. The site saves only totals, like how many people picked chewy textures, so no one's individual answers exist anywhere. Your language choice is remembered only on your own device.</p>
+          <p data-i18n="about.p4">The results come from people who choose to answer, so treat them as a conversation, not a study. The more people take part, the more interesting the picture gets.</p>
         </div>
         <div class="about__actions">
-          <a class="btn btn--primary" href="#survey">Take the survey</a>
-          <button class="btn btn--on-dark" id="share-button" type="button">Share Boba Lab</button>
+          <a class="btn btn--primary" href="#survey" data-i18n="about.ctaSurvey">Take the survey</a>
+          <button class="btn btn--on-dark" id="share-button" type="button" data-i18n="about.share">Share Boba Lab</button>
         </div>
         <p class="about__status" id="share-status" role="status" aria-live="polite"></p>
       </div>
@@ -136,7 +144,7 @@
 
   <footer class="site-footer">
     <div class="pearls pearls--footer" aria-hidden="true"></div>
-    <p>Boba Lab, <span id="year"></span>. Made with curiosity and a lot of tea.</p>
+    <p id="footer-text">Boba Lab, <span id="year"></span>. Made with curiosity and a lot of tea.</p>
   </footer>
 </body>
 </html>
