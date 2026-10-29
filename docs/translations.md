@@ -119,4 +119,4 @@ The engine handles this with the browser's built-in plural rules.
 |---|---|---|
 | English | 205 of 205 | n/a (source) |
 | Russian | 38 of 205 (sample) | sample reviewed |
-| Uzbek (Latin) | 38 of 205 (sample) | glossary decisions reviewed; full text not yet |
+| Uzbek (Latin) | 38 of 205 (sample) | glossary decisions reviewed and settled; full text not yet |
