@@ -5,7 +5,7 @@ the language system works, the style decisions, and the glossary that keeps the
 terminology consistent. **The glossary is the source of truth**: translations
 follow it, and when it changes, the translations change with it.
 
-**Status: glossary under review.** Russian and Uzbek currently contain a small
+**Status: glossary waiting for final approval.** Russian and Uzbek currently contain a small
 sample in the code (38 of 205 messages). The remaining messages fall back to
 English until this glossary is approved. Nothing is final until a fluent speaker
 has read it.
@@ -43,7 +43,8 @@ has read it.
 ## Glossary
 
 "Approved" means you confirmed it. "Proposed" follows from an approved decision
-or the sample you already reviewed. "Needs review" is my least certain wording.
+or the sample you already reviewed, and is still waiting for your final OK.
+"Sample, in use" is wording already on the preview that you have seen.
 
 | English | Русский | Oʻzbekcha | Status |
 |---|---|---|---|
@@ -51,23 +52,23 @@ or the sample you already reviewed. "Needs review" is my least certain wording.
 | What's in your cup? (headline) | Что в твоём стаканчике? | **Stakanda nima bor?** | Approved |
 | Pick a tea, a flavor and a few toppings. Then see how your taste compares with other people's. (intro) | Выбери чай, вкус и пару топпингов. А потом сравни свой вкус со вкусами других людей. | **Choy, taʼm, topping: oʻzingizga yoqqanini tanlang. Keyin boshqalar nimani tanlaganini koʻring.** | Approved |
 | Build your boba (button) | Собери свой бабл-ти | **Boba tayyorlang** | Approved |
-| Build (menu link) | Собрать | Tayyorlash | Proposed (follows the button) |
+| Build (menu link) | Собрать | **Tayyorlash** | Approved |
 | Take the survey (button) | Пройти опрос | Soʻrovnomada qatnashing | Sample, in use |
 | tea base | чай-основа | choy asosi | Proposed |
 | flavor | вкус | taʼm | Approved |
 | sweetness | сладость | shirinlik | Proposed |
 | toppings | топпинги | **toppinglar** | Approved |
-| no toppings | без топпингов | topping yoʻq | Proposed |
-| Pick up to 3. | Выбери до 3. | Eng koʻpi bilan 3 ta tanlang. | Proposed |
-| tapioca pearls | тапиока | tapioka marjonlari | Needs review |
-| popping boba | поппинг-боба | portlovchi boba | Needs review |
-| grass jelly | травяное желе | oʻt jelesi | Needs review |
+| no toppings | без топпингов | **topping yoʻq** | Approved |
+| Pick up to 3. | Выбери до 3. | **Eng koʻpi bilan 3 ta tanlang.** | Approved |
+| tapioca pearls | тапиока | **tapioka sharchalari** | Approved |
+| popping boba | поппинг-боба | **sharbatli boba** | Approved |
+| grass jelly | травяное желе | **giyohli jele** | Approved |
 | lychee jelly | желе из личи | lichi jelesi | Proposed |
 | egg pudding | яичный пудинг | tuxumli puding | Proposed |
 | red bean | красная фасоль | qizil loviya | Proposed |
 | cheese foam | сырная пенка | pishloqli koʻpik | Proposed |
 | brown sugar | коричневый сахар | jigarrang shakar | Proposed |
-| Surprise me | Удиви меня | Meni ajablantiring | Needs review |
+| Surprise me (button) | Удиви меня | **Ajablantirib yuboring** | Approved |
 | survey | опрос | soʻrovnoma | Sample, in use |
 | results | результаты | natijalar | Sample, in use |
 | part of the world | часть мира | dunyoning qismi | Sample, in use |
@@ -75,13 +76,13 @@ or the sample you already reviewed. "Needs review" is my least certain wording.
 | Demo data | Демо-данные | Demo maʼlumotlar | Sample, in use |
 | You / Your region | Ты / Твой регион | Siz / Sizning hududingiz | Proposed |
 
-## How the boba / bubble tea rule looks in sentences (Uzbek, proposed)
+## How the boba / bubble tea rule looks in sentences (Uzbek)
 
-| Where | Proposed Uzbek | Why |
-|---|---|---|
-| Browser tab title | Boba Lab: bubble tea tayyorlang va taʼmlarni solishtiring | Descriptive text: "bubble tea", bare, no ending |
-| Page description | Oʻzingizga yoqqan bubble tea tayyorlang, qisqa anonim soʻrovnomada qatnashing va taʼmingiz boshqalarnikiga qanchalik mos kelishini bilib oling. | Same rule |
-| Share text | Boba tayyorlang va taʼmingiz boshqalarnikiga qanchalik mos kelishini koʻring. | Short, so "boba" |
+| Where | Uzbek | Why | Status |
+|---|---|---|---|
+| Browser tab title | **Boba Lab: bubble tea tayyorlang va taʼmlarni solishtiring** | Descriptive text: "bubble tea", bare, no ending. Checked: reads well on a phone tab. | Approved |
+| Page description | Oʻzingizga yoqqan bubble tea tayyorlang, qisqa anonim soʻrovnomada qatnashing va taʼmingiz boshqalarnikiga qanchalik mos kelishini bilib oling. | Same rule | Proposed |
+| Share text | Boba tayyorlang va taʼmingiz boshqalarnikiga qanchalik mos kelishini koʻring. | Short, so "boba" | Proposed |
 
 ## Sample strings in the code that will change once this is approved
 
@@ -107,7 +108,7 @@ small naming rules (the `grammar` part of a locale file). Planned examples:
 | English | Русский | Oʻzbekcha |
 |---|---|---|
 | Taro oolong tea | Улун с таро | Taroli oolong choyi |
-| 50% sweet, with tapioca pearls and cheese foam | Сладость 50%, с тапиокой и сырной пенкой | 50% shirin, tapioka marjonlari va pishloqli koʻpik bilan |
+| 50% sweet, with tapioca pearls and cheese foam | Сладость 50%, с тапиокой и сырной пенкой | 50% shirin, tapioka sharchalari va pishloqli koʻpik bilan |
 
 Russian also needs three plural forms («1 человек», «2 человека», «5 человек»).
 The engine handles this with the browser's built-in plural rules.
