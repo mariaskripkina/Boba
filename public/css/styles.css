@@ -218,6 +218,18 @@ html:lang(uz) .hero h1 { font-size: clamp(2.4rem, 11.4vw, 7.4rem); }
 .hero__cup-button > span { display: block; }
 .hero__hint { position: relative; z-index: 1; margin-top: 10px; font-family: var(--font-ui); font-size: 0.85rem; font-weight: 500; }
 
+/* Spacing under the buttons, when the page is a single column (below 900px).
+   The pink circle is drawn behind the cup and can be taller than the cup's own box, so on
+   wider single-column screens (large phones turned sideways, tablets, preview panels,
+   roughly 480 to 899px) it used to poke up into the buttons.
+   This makes the box at least as tall as the circle (its size is unchanged), so the circle
+   always starts about 30px below the buttons. Phones keep their larger gap and desktop is
+   untouched. A browser that does not know "cqw" simply skips this rule. */
+@media (max-width: 899px) {
+  .hero { container-type: inline-size; }
+  .hero__stage { min-height: calc(min(86cqw, 440px) * 1.04 + 4px); }
+}
+
 /* ==========================================================================
    The cup (SVG)
    ========================================================================== */
