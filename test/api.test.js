@@ -223,6 +223,7 @@ test('Upstash mode: a database error gives a friendly failure, not a crash', asy
   const realFetch = globalThis.fetch;
   process.env.UPSTASH_REDIS_REST_URL = 'https://example-db.upstash.io';
   process.env.UPSTASH_REDIS_REST_TOKEN = 'secret-token';
+  process.env.VERCEL = '1';
   process.env.VERCEL_ENV = 'production';
   globalThis.fetch = async () => ({ ok: false, status: 500, json: async () => ({}) });
   try {
@@ -233,6 +234,7 @@ test('Upstash mode: a database error gives a friendly failure, not a crash', asy
     globalThis.fetch = realFetch;
     delete process.env.UPSTASH_REDIS_REST_URL;
     delete process.env.UPSTASH_REDIS_REST_TOKEN;
+    delete process.env.VERCEL;
     delete process.env.VERCEL_ENV;
   }
 });

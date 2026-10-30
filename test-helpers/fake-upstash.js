@@ -95,18 +95,21 @@ export async function startFakeUpstash() {
       return JSON.stringify([...data.entries()].filter(([k]) => k.startsWith(prefix)).sort(([a], [b]) => (a < b ? -1 : 1)));
     },
     // Point the website's storage code at this fake server (and back), pretending to be
-    // a given environment: 'production' (the default), 'preview' (needs a label), or
-    // 'bare' (credentials but no environment information at all).
+    // a given environment: 'production' (the default), 'preview', 'development' (both need a
+    // label), 'bare' (on Vercel, but VERCEL_ENV missing), 'laptop' (credentials on a computer
+    // that is not Vercel), or any other word (an unexpected VERCEL_ENV value on Vercel).
     connect({ environment = 'production', label } = {}) {
       process.env.UPSTASH_REDIS_REST_URL = url;
       process.env.UPSTASH_REDIS_REST_TOKEN = FAKE_TOKEN;
-      if (environment === 'bare') delete process.env.VERCEL_ENV;
+      if (environment === 'laptop') delete process.env.VERCEL;
+      else process.env.VERCEL = '1';
+      if (environment === 'bare' || environment === 'laptop') delete process.env.VERCEL_ENV;
       else process.env.VERCEL_ENV = environment;
       if (label === undefined) delete process.env.PREVIEW_NAMESPACE;
       else process.env.PREVIEW_NAMESPACE = label;
     },
     disconnect() {
-      for (const name of ['UPSTASH_REDIS_REST_URL', 'UPSTASH_REDIS_REST_TOKEN', 'VERCEL_ENV', 'PREVIEW_NAMESPACE']) delete process.env[name];
+      for (const name of ['UPSTASH_REDIS_REST_URL', 'UPSTASH_REDIS_REST_TOKEN', 'VERCEL', 'VERCEL_ENV', 'PREVIEW_NAMESPACE']) delete process.env[name];
     },
     close: () => new Promise((resolve) => server.close(resolve)),
   };

@@ -148,14 +148,73 @@ test('a Preview with a missing or invalid namespace is switched OFF, never point
   }
 });
 
-test('only the exact word "production" means Production; look-alikes are treated as a Preview', () => {
-  for (const vercelEnv of ['Production', 'PRODUCTION', 'prod', ' production', 'production ', 'staging', 'preview', 'development', '', undefined]) {
-    const bare = ns.resolveNamespace({ VERCEL: '1', VERCEL_ENV: vercelEnv });
-    assert.equal(bare.ok, false, `VERCEL_ENV=${JSON.stringify(vercelEnv)} with no label must be blocked`);
-    const labelled = ns.resolveNamespace({ VERCEL: '1', VERCEL_ENV: vercelEnv, PREVIEW_NAMESPACE: 'rate-limit-test' });
-    assert.equal(labelled.kind, 'preview');
-    assert.equal(labelled.namespace, 'boba-preview:rate-limit-test:v1');
+test('on Vercel, only the three names Vercel really uses are accepted; anything else switches storage OFF', () => {
+  for (const vercelEnv of ['Production', 'PRODUCTION', 'prod', ' production', 'production ', 'staging', 'live', 'test', '', undefined, null, 1, true]) {
+    for (const label of [undefined, 'rate-limit-test']) { // even WITH a valid label
+      const where = ns.resolveNamespace({ VERCEL: '1', VERCEL_ENV: vercelEnv, PREVIEW_NAMESPACE: label });
+      assert.equal(where.ok, false, `VERCEL_ENV=${JSON.stringify(vercelEnv)} label=${JSON.stringify(label)} must be blocked`);
+      assert.equal(where.namespace, undefined);
+    }
   }
+  assert.match(ns.resolveNamespace({ VERCEL: '1' }).reason, /VERCEL_ENV is missing/);
+  assert.match(ns.resolveNamespace({ VERCEL: '1', VERCEL_ENV: 'staging' }).reason, /not one of/);
+  for (const vercelEnv of ['preview', 'development']) {
+    assert.equal(ns.resolveNamespace({ VERCEL: '1', VERCEL_ENV: vercelEnv }).ok, false, `${vercelEnv} without a label`);
+    assert.deepEqual(ns.resolveNamespace({ VERCEL: '1', VERCEL_ENV: vercelEnv, PREVIEW_NAMESPACE: 'abc' }), { ok: true, kind: 'preview', namespace: 'boba-preview:abc:v1' });
+  }
+});
+
+test('Production needs BOTH VERCEL=1 and VERCEL_ENV=production', () => {
+  for (const vercel of ['true', 'yes', '0', 'production', 'preview']) {
+    assert.equal(ns.resolveNamespace({ VERCEL: vercel, VERCEL_ENV: 'production' }).ok, false, `VERCEL=${vercel}`);
+  }
+  assert.equal(ns.resolveNamespace({ VERCEL: '1', VERCEL_ENV: 'production' }).kind, 'production');
+});
+
+test('"production" claimed on a computer that is not Vercel is never trusted', () => {
+  for (const extra of [{}, { PREVIEW_NAMESPACE: 'abc' }, { UPSTASH_REDIS_REST_URL: 'https://x', UPSTASH_REDIS_REST_TOKEN: 't' }, { VERCEL: '' }]) {
+    const where = ns.resolveNamespace({ VERCEL_ENV: 'production', ...extra });
+    assert.equal(where.ok, false, JSON.stringify(extra));
+    assert.match(where.reason, /not a Vercel deployment/);
+  }
+});
+
+test('on a local computer: no credentials means memory only; real Redis needs an explicit label', () => {
+  assert.deepEqual(ns.resolveNamespace({}), { ok: true, kind: 'local', namespace: 'boba:v1' });
+  assert.equal(ns.resolveNamespace({ VERCEL_ENV: 'development' }).kind, 'local');
+  const creds = { UPSTASH_REDIS_REST_URL: 'https://x', UPSTASH_REDIS_REST_TOKEN: 't' };
+  assert.equal(ns.resolveNamespace({ ...creds }).ok, false);
+  assert.equal(ns.resolveNamespace({ ...creds, VERCEL_ENV: 'development' }).ok, false);
+  assert.equal(ns.resolveNamespace({ KV_REST_API_URL: 'https://x', KV_REST_API_TOKEN: 't' }).ok, false);
+  assert.deepEqual(ns.resolveNamespace({ ...creds, PREVIEW_NAMESPACE: 'abc' }), { ok: true, kind: 'preview', namespace: 'boba-preview:abc:v1' });
+  for (const odd of ['Production', 'staging', 'prod']) assert.equal(ns.resolveNamespace({ VERCEL_ENV: odd }).ok, false, `off Vercel, VERCEL_ENV=${odd}`);
+});
+
+test('EXHAUSTIVE: no combination of settings reaches Production unless Vercel says so explicitly', () => {
+  const vercelValues = [undefined, '', '0', '1', 'true', 'preview'];
+  const envValues = [undefined, '', 'production', 'Production', 'preview', 'development', 'staging', 'prod', ' production'];
+  const labels = [undefined, '', 'abc', 'boba', 'production', 'a:b', '*'];
+  const credentialSets = [{}, { UPSTASH_REDIS_REST_URL: 'u', UPSTASH_REDIS_REST_TOKEN: 't' }, { KV_REST_API_URL: 'u', KV_REST_API_TOKEN: 't' }, { UPSTASH_REDIS_REST_URL: 'u' }];
+  let combinations = 0;
+  for (const VERCEL of vercelValues) for (const VERCEL_ENV of envValues) for (const PREVIEW_NAMESPACE of labels) for (const creds of credentialSets) {
+    const env = { ...creds };
+    if (VERCEL !== undefined) env.VERCEL = VERCEL;
+    if (VERCEL_ENV !== undefined) env.VERCEL_ENV = VERCEL_ENV;
+    if (PREVIEW_NAMESPACE !== undefined) env.PREVIEW_NAMESPACE = PREVIEW_NAMESPACE;
+    const where = ns.resolveNamespace(env);
+    const explicit = VERCEL === '1' && VERCEL_ENV === 'production';
+    const fullCredentials = Boolean(creds.UPSTASH_REDIS_REST_URL && creds.UPSTASH_REDIS_REST_TOKEN) || Boolean(creds.KV_REST_API_URL);
+    combinations += 1;
+
+    assert.equal(where.kind === 'production', explicit, JSON.stringify(env));
+    if (where.ok && where.namespace === 'boba:v1') {
+      assert.ok(explicit || where.kind === 'local', `only explicit Production or memory-only local may use boba:v1: ${JSON.stringify(env)}`);
+    }
+    if (where.kind === 'local') assert.ok(!VERCEL && !fullCredentials, `local means no Vercel and no credentials: ${JSON.stringify(env)}`);
+    if (where.kind === 'preview') assert.match(where.namespace, /^boba-preview:[a-z0-9-]{3,40}:v1$/);
+    if (explicit) assert.equal(where.namespace, 'boba:v1', 'explicit Production ignores everything else');
+  }
+  assert.equal(combinations, 6 * 9 * 7 * 4);
 });
 
 test('a computer holding Redis credentials but no namespace is blocked (the "pasted live credentials" mistake)', () => {
@@ -223,6 +282,142 @@ test('scans and deletes are only allowed inside the namespace, and only where a 
   for (const bad of [['SCAN', '0'], ['SCAN', '0', 'COUNT', 100], ['SCAN', '0', 'MATCH', '*'], ['SCAN', '0', 'MATCH', 'boba:v1:*'], ['SCAN', '0', 'MATCH', 'boba-preview:*'], ['SCAN', '0', 'MATCH', 'boba-preview:test-a*'], ['DEL'], ['DEL', 'boba:v1:total'], ['DEL', `${preview}:a`, 'boba:v1:total']]) {
     assert.throws(() => ns.assertInNamespace([bad], preview, scanAllowed), /Refused/, JSON.stringify(bad));
   }
+});
+
+// ---- 2b. regression tests for the two weaknesses found in the review, and the exact-arguments rule ------------------
+
+const scanAllowed = new Set(['SCAN', 'DEL', 'GET', 'TYPE', 'DBSIZE', ...ns.APP_COMMANDS]);
+const refused = (command, namespace = previewOf('test-a'), allowed = scanAllowed) => assert.throws(() => ns.assertInNamespace([command], namespace, allowed), /Refused/, JSON.stringify(command));
+const accepted = (command, namespace = previewOf('test-a'), allowed = scanAllowed) => assert.doesNotThrow(() => ns.assertInNamespace([command], namespace, allowed), JSON.stringify(command));
+
+test('REGRESSION 1: a SCAN with a second MATCH (which Redis would obey) is refused, in any letter case', () => {
+  const own = `${previewOf('test-a')}:*`;
+  accepted(['SCAN', '0', 'MATCH', own]);
+  accepted(['SCAN', '0', 'MATCH', own, 'COUNT', 200]);
+  accepted(['SCAN', 0, 'match', own, 'count', 10]);
+  refused(['SCAN', '0', 'MATCH', own, 'MATCH', '*']);
+  refused(['SCAN', '0', 'MATCH', own, 'match', 'boba:v1:*']);
+  refused(['SCAN', '0', 'MATCH', '*', 'MATCH', own]);
+  refused(['SCAN', '0', 'MATCH', own, 'COUNT', 10, 'MATCH', '*']);
+  refused(['SCAN', '0', 'COUNT', 10, 'MATCH', own]);        // options must come in the one fixed order
+  refused(['SCAN', '0', 'MATCH', own, 'COUNT', 10, 'TYPE', 'hash']);
+  refused(['SCAN', '0', 'MATCH', own, 'COUNT']);
+  refused(['SCAN', '0', 'MATCH', own, 'COUNT', 0]);
+  refused(['SCAN', '0', 'MATCH', own, 'COUNT', 1001]);
+  refused(['SCAN', '0', 'MATCH', own, 'COUNT', '10']);
+  refused(['SCAN', '0', 'MATCH', own, 'EXTRA', 10]);
+  refused(['SCAN', '0', 'MATCH', own, 'COUNT', 10, 'x']);
+  refused(['SCAN', 'MATCH', own]);
+  refused(['SCAN', '0']);
+  refused(['SCAN', 'x', 'MATCH', own]);
+  refused(['SCAN', '-1', 'MATCH', own]);
+});
+
+test('REGRESSION 1b: the scan pattern must be exactly this namespace followed by ":*"', () => {
+  const ns1 = previewOf('test-a');
+  for (const pattern of ['*', `${ns1}*`, `${ns1}:`, `${ns1}:*:*`, `${ns1}:t*`, `${ns1}:[a-z]*`, `${ns1}:?otal`, 'boba:v1:*', 'boba-preview:*', `${previewOf('test-ab')}:*`, `${ns1}x:*`, ` ${ns1}:*`, `${ns1}:* `, '', undefined, null, 5, [`${ns1}:*`]]) {
+    refused(['SCAN', '0', 'MATCH', pattern]);
+  }
+  refused(['SCAN', '0', 'MATCH', 'boba-preview:test-a:v1:*'], 'boba:v1');
+  accepted(['SCAN', '0', 'MATCH', 'boba:v1:*'], 'boba:v1');
+});
+
+test('REGRESSION 2: extra arguments on single-key commands are refused (the key could be smuggled in as a 2nd argument)', () => {
+  const key = `${previewOf('test-a')}:total`;
+  accepted(['GET', key]);
+  accepted(['TYPE', key]);
+  for (const command of ['GET', 'TYPE', 'INCR', 'DECR', 'HGETALL', 'TTL']) {
+    refused([command, key, 'boba:v1:total']);
+    refused([command, key, 'extra']);
+    refused([command, key, 1]);
+    refused([command]);
+  }
+  refused(['DBSIZE', key]);
+  refused(['DBSIZE', 'x']);
+  accepted(['DBSIZE']);
+});
+
+test('every supported command accepts exactly its own arguments and nothing else', () => {
+  const key = `${previewOf('test-a')}:q:adventure`;
+  accepted(['INCR', key]);
+  accepted(['DECR', key]);
+  accepted(['HGETALL', key]);
+  accepted(['TTL', key]);
+  accepted(['EXPIRE', key, 86400]);
+  accepted(['HINCRBY', key, 'europe|try', 1]);
+  accepted(['HINCRBY', key, 7, -1]);
+  accepted(['DEL', key]);
+  accepted(['DEL', key, `${key}2`]);
+
+  refused(['EXPIRE', key]);                          // too few
+  refused(['EXPIRE', key, 86400, 'NX']);             // too many (an option Redis would accept)
+  refused(['EXPIRE', key, '86400']);                 // seconds must be a number
+  refused(['EXPIRE', key, 0]);
+  refused(['EXPIRE', key, 86400.5]);
+  refused(['EXPIRE', key, 99_999_999_999]);
+  refused(['HINCRBY', key, 'f']);
+  refused(['HINCRBY', key, 'f', 1, 'extra']);
+  refused(['HINCRBY', key, 'f', '1']);
+  refused(['HINCRBY', key, 'f', 1.5]);
+  refused(['HINCRBY', key, 'f', 1_000_000]);
+  refused(['HINCRBY', key, { a: 1 }, 1]);
+  refused(['HINCRBY', key, ['f'], 1]);
+  refused(['HINCRBY', key, null, 1]);
+  refused(['HINCRBY', key, Infinity, 1]);
+  refused(['DEL']);
+  refused(['DEL', ...Array.from({ length: 101 }, (_, i) => `${key}${i}`)]);
+  refused(['DEL', key, 'boba:v1:total']);
+  refused(['DEL', key, 5]);
+});
+
+test('the app\'s own commands pass the exact-arguments rule (so the real website still works)', async () => {
+  await withFake(async (fake) => {
+    fake.connect({ environment: 'production' });
+    assert.equal((await post('203.0.113.50', { answers: { adventure: 'try', sweetness: '50' }, region: 'europe', drink: { tea: 'oolong', flavor: 'taro', sweet: '50', toppings: ['tapioca'] } })).status, 200);
+    assert.equal((await get()).json.storage, 'production');
+    fake.connect({ environment: 'preview', label: 'test-a' });
+    assert.equal((await post('203.0.113.50', { answers: { adventure: 'try' } })).status, 200);
+  });
+});
+
+test('the guard refuses to work with a namespace that is not exactly "boba:v1" or a valid Preview namespace', () => {
+  for (const namespace of ['boba', 'boba:v10', 'boba:v1:', 'boba:v1:x', 'Boba:v1', 'boba-preview', 'boba-preview:', 'boba-preview::v1', 'boba-preview:a:v1', 'boba-preview:production:v1', 'boba-preview:boba:v1', 'boba-preview:Test-A:v1', 'boba-preview:test-a:v2', 'boba-preview:test-a:v1:', 'boba-preview:test:a:v1', 'boba-preview:te st:v1', 'boba-preview:*:v1', ' boba:v1', '', undefined, null, 1, {}, ['boba:v1']]) {
+    assert.equal(ns.isValidNamespace(namespace), false, JSON.stringify(namespace));
+    assert.throws(() => ns.assertInNamespace([['GET', 'boba:v1:total']], namespace), /Refused/, JSON.stringify(namespace));
+    assert.throws(() => ns.guardedRunner(async () => [], namespace), /Refused/, JSON.stringify(namespace));
+  }
+  for (const namespace of ['boba:v1', 'boba-preview:abc:v1', 'boba-preview:rate-limit-test:v1']) assert.equal(ns.isValidNamespace(namespace), true);
+});
+
+test('prefix confusion: the ":" after the namespace is required, for Production and for every Preview label', () => {
+  const cases = [
+    ['boba:v1', ['boba:v10:total', 'boba:v1total', 'boba:v1', 'boba:v1:', 'boba:v11:total', 'boba:v:total', 'boba:V1:total', 'xboba:v1:total']],
+    [previewOf('test-a'), [`${previewOf('test-ab')}:total`, `${previewOf('test-a')}x:total`, `${previewOf('test-a')}total`, `${previewOf('test-a')}`, `${previewOf('test-a')}:`, 'boba-preview:test-a:v10:total', 'boba-preview:test-a:v2:total', 'boba-preview:test-a-b:v1:total', 'boba-preview:test:v1:total', 'boba-preview:test-a:v1', `${PROD}:total`]],
+    [previewOf('test-ab'), [`${previewOf('test-a')}:total`, 'boba-preview:test-abc:v1:total', 'boba-preview:test-a:v1:total']],
+    [previewOf('abc'), [`${previewOf('abcd')}:total`, `${previewOf('ab')}:total`, `${previewOf('xabc')}:total`]],
+  ];
+  for (const [namespace, keys] of cases) {
+    for (const key of keys) {
+      for (const command of ['GET', 'INCR', 'HGETALL', 'TTL', 'TYPE', 'DECR']) refused([command, key], namespace);
+      refused(['EXPIRE', key, 60], namespace);
+      refused(['HINCRBY', key, 'f', 1], namespace);
+      refused(['DEL', key], namespace);
+    }
+    accepted(['GET', `${namespace}:total`], namespace);
+  }
+});
+
+test('keys with spaces, control characters or wildcards are refused even inside the namespace', () => {
+  for (const tail of ['a b', 'a\nb', 'a\u0000b', 'a*', 'a?', 'a[b]', 'a\\b', 'é', 'a\tb', ' ']) {
+    refused(['GET', `${PROD}:${tail}`], PROD);
+    refused(['DEL', `${previewOf('test-a')}:${tail}`]);
+  }
+  accepted(['GET', `${PROD}:x:adventure`], PROD);
+  accepted(['GET', `${PROD}:rl:${'f'.repeat(32)}`], PROD);
+});
+
+test('an empty batch is refused', () => {
+  assert.throws(() => ns.assertInNamespace([], PROD), /Refused/);
 });
 
 // ---- 3. end to end: a Preview cannot touch Production ---------------------------------------------------------------
@@ -299,12 +494,34 @@ test('a Preview with a missing or invalid namespace sends NOTHING to Redis and P
   });
 });
 
-test('a bare environment (Redis credentials, no environment information) is switched off too', async () => {
+test('a Vercel deployment with a missing or unexpected VERCEL_ENV sends NOTHING, even with a valid label', async () => {
   await withFake(async (fake) => {
-    fake.connect({ environment: 'bare' });
+    const productionBefore = fake.slice(`${PROD}:`);
+    for (const environment of ['bare', 'Production', 'staging', 'prod', 'live', 'laptop']) {
+      fake.connect({ environment, label: 'rate-limit-test' });
+      if (environment === 'laptop') process.env.VERCEL_ENV = 'production'; // a laptop claiming to be Production
+      fake.log.length = 0;
+      assert.equal(storeConfigured(), false, environment);
+      assert.equal((await post('203.0.113.7')).status, 503, environment);
+      assert.equal((await get()).json.configured, false, environment);
+      assert.equal(fake.log.length, 0, `${environment}: no command may reach Redis`);
+    }
+    assert.equal(fake.slice(`${PROD}:`), productionBefore);
+  });
+});
+
+test('a computer with Redis credentials and no label is switched off; with a label it uses the Preview namespace only', async () => {
+  await withFake(async (fake) => {
+    const productionBefore = fake.slice(`${PROD}:`);
+    fake.connect({ environment: 'laptop' });
     assert.equal(storeConfigured(), false);
     assert.equal((await post('203.0.113.7')).status, 503);
     assert.equal(fake.log.length, 0);
+
+    fake.connect({ environment: 'laptop', label: 'my-laptop' });
+    assert.equal((await post('203.0.113.7')).status, 200);
+    for (const key of touchedKeys(fake.log)) assert.ok(key.startsWith(`${previewOf('my-laptop')}:`), key);
+    assert.equal(fake.slice(`${PROD}:`), productionBefore);
   });
 });
 
@@ -416,30 +633,94 @@ test('local memory mode is guarded too', async () => {
 
 // ---- 5. nothing can build keys or reach Redis around the guard -----------------------------------------------------
 
-const sourceFiles = (dir) => fs.readdirSync(path.join(root, dir)).filter((f) => f.endsWith('.js')).map((f) => path.join(dir, f));
-const code = (file) => fs.readFileSync(path.join(root, file), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+// Every source file in the repository (not just api/ and lib/), found recursively.
+const SKIPPED_FOLDERS = new Set(['node_modules', '.git', '.vercel', 'snapshots']);
+function walk(dir = '') {
+  const found = [];
+  for (const entry of fs.readdirSync(path.join(root, dir), { withFileTypes: true })) {
+    if (SKIPPED_FOLDERS.has(entry.name)) continue;
+    const relative = dir ? `${dir}/${entry.name}` : entry.name;
+    if (entry.isDirectory()) found.push(...walk(relative));
+    else if (/\.(js|mjs|cjs|ts|html)$/.test(entry.name) || entry.name === 'package.json' || entry.name === 'vercel.json') found.push(relative);
+  }
+  return found;
+}
+const code = (file) => fs.readFileSync(path.join(root, file), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:'"`])\/\/.*$/gm, '$1');
+const isTestFile = (file) => file.startsWith('test/') || file.startsWith('test-helpers/');
 
-test('only lib/namespace.js knows namespace names; no other server file writes a key prefix', () => {
-  for (const file of [...sourceFiles('api'), ...sourceFiles('lib'), ...sourceFiles('scripts')]) {
-    if (file === path.join('lib', 'namespace.js')) continue;
-    const text = code(file);
-    assert.equal(/boba:v1|boba-preview/.test(text), false, `${file} must not hard-code a namespace`);
+// The ONLY files that may touch Redis, its settings or its address. Anything new must be added here ON PURPOSE,
+// which forces a review of this list.
+const GUARDED_STORAGE_LAYER = ['lib/upstash.js', 'lib/store.js', 'lib/namespace.js'];
+const REVIEWED_ADMIN_SCRIPTS = ['scripts/snapshot.js', 'scripts/reset-preview.js'];
+const MAY_TOUCH_REDIS = new Set([...GUARDED_STORAGE_LAYER, ...REVIEWED_ADMIN_SCRIPTS]);
+
+// Anything that talks to Redis, or to the network at all, outside the allowed places.
+const REDIS_WORDS = /upstash|KV_REST_API|\/pipeline|ioredis|node-redis|redis-?client|from\s+['"]redis['"]|require\(\s*['"]redis['"]\s*\)|\bnew\s+Redis\b/i;
+const NETWORK_WORDS = /\bfetch\s*\(|node:(?:net|tls|https|http2|dgram)\b|\bXMLHttpRequest\b|\bWebSocket\b|\bEventSource\b|\bsendBeacon\b|require\(\s*['"](?:net|tls|https)['"]\s*\)|from\s+['"](?:net|tls|https)['"]/;
+
+test('the scanner itself recognises raw Redis access (so the checks below can be trusted)', () => {
+  for (const bad of ["import { sendToUpstash } from './upstash.js';", "fetch('https://x.upstash.io/pipeline')", 'process.env.KV_REST_API_URL', "import Redis from 'ioredis'", "const r = require('redis')", "import net from 'node:net'", 'new WebSocket(url)']) {
+    assert.ok(REDIS_WORDS.test(bad) || NETWORK_WORDS.test(bad), bad);
+  }
+  assert.equal(REDIS_WORDS.test('const store = keyFor("total")'), false);
+  const everything = walk();
+  for (const expected of ['lib/store.js', 'lib/namespace.js', 'api/survey.js', 'public/js/survey.js', 'scripts/snapshot.js', 'test/isolation.test.js', 'dev-server.js', 'package.json']) {
+    assert.ok(everything.includes(expected), `the scan must reach ${expected}`);
   }
 });
 
-test('only lib/store.js talks to Redis from the website, and the scripts always wrap it in a guard', () => {
-  for (const file of [...sourceFiles('api'), ...sourceFiles('lib')]) {
-    if (file === path.join('lib', 'store.js') || file === path.join('lib', 'upstash.js')) continue;
-    assert.equal(/upstash\.js|sendToUpstash|fetch\(/.test(code(file)), false, `${file} must not reach Redis directly`);
+test('RECURSIVE: across the whole repository, only the guarded storage layer and the two reviewed scripts mention Redis or its settings', () => {
+  for (const file of walk()) {
+    if (isTestFile(file) || MAY_TOUCH_REDIS.has(file)) continue;
+    assert.equal(REDIS_WORDS.test(code(file)), false, `${file} must not talk to Redis or mention its settings`);
   }
-  for (const file of ['scripts/snapshot.js', 'scripts/reset-preview.js']) {
+});
+
+test('RECURSIVE: no server file reaches the network except the one sender; the browser only calls our own /api', () => {
+  for (const file of walk()) {
+    if (isTestFile(file) || file === 'lib/upstash.js') continue;
+    // `isIP` only tells whether text looks like an address; it opens no connection. It is the one allowed use of node:net.
+    const text = code(file).replace("import { isIP } from 'node:net';", '');
+    if (file.startsWith('public/')) {
+      for (const [, target] of text.matchAll(/\bfetch\s*\(\s*([^,)]+)/g)) {
+        assert.match(target.trim(), /^['"`]\/api\/(?:survey|results)['"`]$/, `${file}: the browser may only fetch our own /api/survey and /api/results, not ${target}`);
+      }
+      assert.equal(/\b(?:XMLHttpRequest|WebSocket|EventSource|sendBeacon)\b/.test(text), false, `${file}`);
+    } else {
+      assert.equal(NETWORK_WORDS.test(text), false, `${file} must not use the network`);
+    }
+  }
+});
+
+test('RECURSIVE: only store.js and the two reviewed scripts import the raw sender, and each sends in exactly one guarded place', () => {
+  for (const file of walk()) {
+    if (isTestFile(file)) continue;
+    const imports = /sendToUpstash|lib\/upstash|\.\/upstash\.js|\.\.\/lib\/upstash/.test(code(file));
+    if (imports) assert.ok(['lib/upstash.js', 'lib/store.js', ...REVIEWED_ADMIN_SCRIPTS].includes(file), `${file} must not use the raw Redis sender`);
+  }
+  for (const file of REVIEWED_ADMIN_SCRIPTS) {
     const text = code(file);
-    assert.ok(/guardedRunner|snapshotRunner/.test(text), `${file} must send commands through the guard`);
-    assert.equal((text.match(/sendToUpstash\(/g) || []).length, 1, `${file} should have exactly one place that sends`);
+    assert.equal((text.match(/sendToUpstash\s*\(/g) || []).length, 1, `${file}: exactly one place that sends`);
+    assert.ok(/(?:guardedRunner|snapshotRunner)\(\s*\(commands\)\s*=>\s*sendToUpstash\(config,\s*commands\)/.test(text), `${file}: the sender must be wrapped directly in the guard`);
   }
   const store = code('lib/store.js');
-  assert.ok(/assertInNamespace\(commands/.test(store), 'store.run must check every batch');
-  assert.equal(/boba:v1/.test(store), false);
+  assert.equal((store.match(/sendToUpstash\s*\(/g) || []).length, 1, 'store.js sends in exactly one place');
+  assert.ok(store.indexOf('assertInNamespace(commands') !== -1 && store.indexOf('assertInNamespace(commands') < store.indexOf('sendToUpstash(config'), 'store.run must check the batch BEFORE sending it');
+  assert.ok(store.indexOf('assertInNamespace(commands') < store.indexOf('runInMemory(commands)', store.indexOf('async function run')), 'the memory store is guarded too');
+});
+
+test('RECURSIVE: a new script or a new dependency cannot appear without this review list noticing', () => {
+  const scripts = walk('scripts').filter((f) => f.endsWith('.js'));
+  assert.deepEqual(scripts.sort(), [...REVIEWED_ADMIN_SCRIPTS].sort(), 'a script was added or removed: review it, then update REVIEWED_ADMIN_SCRIPTS');
+  const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
+  assert.deepEqual(Object.keys({ ...pkg.dependencies, ...pkg.devDependencies, ...pkg.optionalDependencies }), [], 'no packages at all, so no Redis client can sneak in');
+});
+
+test('only lib/namespace.js knows namespace names; no other file writes a key prefix', () => {
+  for (const file of walk()) {
+    if (isTestFile(file) || file === 'lib/namespace.js') continue;
+    assert.equal(/boba:v\d|boba-preview/.test(code(file)), false, `${file} must not hard-code a namespace`);
+  }
 });
 
 test('the reset tool has no way to name the Production namespace', () => {

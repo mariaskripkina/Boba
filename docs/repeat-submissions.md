@@ -189,7 +189,7 @@ live site, because the live code does not read it.
 
 ## Testing
 
-- Automated: `npm test` (106 tests, including a pretend Upstash server holding Production and Preview data side by side).
+- Automated: `npm test` (124 tests, including a pretend Upstash server holding Production and Preview data side by side).
 - Local: `npm run dev` switches the limit on with a throwaway salt. Send 6 answers.
 - Vercel preview: it has no storage until you add the Preview-only variables in `environment-isolation.md`.
 

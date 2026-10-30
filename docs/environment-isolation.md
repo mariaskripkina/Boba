@@ -7,64 +7,73 @@ enforces them, what it cannot protect against, and what you do in Vercel.
 
 ## 1. Exact namespace configuration
 
-| Environment | How it is recognised | Namespace (key prefix) | Example key |
-|---|---|---|---|
-| **Production** | `VERCEL_ENV` is exactly `production` | `boba:v1` (fixed in code, the existing keys, unchanged) | `boba:v1:total` |
-| **Preview** | anything else, with a valid `PREVIEW_NAMESPACE` | `boba-preview:<label>:v1` | `boba-preview:rate-limit-test:v1:total` |
-| **Preview, label missing or invalid** | | **none: storage is switched off** | no Redis command is sent |
-| **This computer, no Redis credentials** | no `VERCEL`, no Upstash variables | temporary in-memory store | nothing is sent anywhere |
-| **This computer WITH Redis credentials but no label** | | **none: storage is switched off** | |
+| Where it runs | Settings it sees | Result |
+|---|---|---|
+| **Production** | `VERCEL=1` **and** `VERCEL_ENV=production` | Namespace `boba:v1` (fixed in code, the existing keys, unchanged). `PREVIEW_NAMESPACE` is ignored. |
+| **Vercel Preview or Development** | `VERCEL=1`, `VERCEL_ENV=preview` or `development`, valid `PREVIEW_NAMESPACE` | Namespace `boba-preview:<label>:v1`, e.g. `boba-preview:rate-limit-test:v1:total` |
+| Vercel Preview/Development, label missing or invalid | | **Storage switched off.** No Redis command is sent. |
+| **On Vercel, `VERCEL_ENV` missing or not exactly `production`/`preview`/`development`** | e.g. `Production`, `prod`, `staging`, empty | **Storage switched off**, even if a valid label is set. Never assumed to be Preview. |
+| On Vercel with `VERCEL_ENV=production` but `VERCEL` not exactly `1` | | **Storage switched off** |
+| **Not on Vercel**, no Redis credentials | | In-memory store only. Nothing is sent anywhere. |
+| Not on Vercel, **with** Redis credentials, no label | | **Storage switched off** |
+| Not on Vercel, with credentials and a valid label | | Real Redis, Preview namespace only |
+| **Not on Vercel but `VERCEL_ENV=production`** (or any unexpected value) | | **Storage switched off.** "Production" is never trusted from a computer that is not Vercel. |
 
-A valid label: lowercase letters and digits, single hyphens between them, 3 to 40 characters.
-Refused: capitals, spaces, `:`, `*`, `/`, empty values, and the reserved words `production`,
-`prod`, `live`, `main`, `master`, `boba`, `default`. Because labels cannot contain `:`, a Preview
-can never write a name that starts with `boba:v1:`, and `boba-preview:` keys can never match
-`boba:v1:`.
+Production is selected by exactly one condition (`VERCEL === '1' && VERCEL_ENV === 'production'`).
+A test tries 1,512 combinations of settings and proves nothing else ever selects it.
+
+A valid label: lowercase letters and digits with single hyphens, 3 to 40 characters. Refused:
+capitals, spaces, `:`, `*`, `/`, empty values, and the reserved words `production`, `prod`,
+`live`, `main`, `master`, `boba`, `default`. A label can never make a key that starts with `boba:v1:`.
 
 All key kinds follow the namespace: totals, answer counters, regional counters, drink counters,
-and the rate-limit counters (`<namespace>:rl:<32 hex>`).
+and rate-limit counters (`<namespace>:rl:<32 hex>`).
 
-## 2. How the rules are enforced (code: `lib/namespace.js`, `lib/store.js`)
+## 2. How the rules are enforced (`lib/namespace.js`, `lib/store.js`)
 
-1. **Production ignores Preview settings.** If `VERCEL_ENV === 'production'`, the namespace is
-   `boba:v1` whatever `PREVIEW_NAMESPACE` says.
-2. **Fail closed.** A non-Production environment with a missing or invalid label gets no namespace.
-   Saving returns "storage not configured", results show "not configured", and nothing is sent to Redis.
-   There is no fallback to `boba:v1`.
-3. **A guard checks every batch of commands before it is sent.** Every key must start with
-   `<this environment's namespace>:`. Only these commands are allowed from the website:
-   `INCR, DECR, HINCRBY, EXPIRE, TTL, GET, HGETALL`. `FLUSHALL, KEYS, EVAL, SET, RENAME` and any
-   other command are refused. One bad command stops the whole batch.
-4. **One door to Redis.** Only `lib/store.js` talks to Redis, and only `lib/namespace.js` knows
-   namespace names (a test fails if any other file hard-codes one).
-5. **Reads, writes, rate limiting, snapshots and reset all use the same guard.**
-   - `scripts/snapshot.js` needs `--production` or `--preview` (it never guesses), reads only,
-     and counts the whole database (`DBSIZE`) only for a Production snapshot.
-   - `scripts/reset-preview.js` can only name a Preview namespace. It has no Production option,
-     refuses to run if `VERCEL_ENV` says production, is a dry run by default, and deleting needs
-     `--delete --confirm <label>` typed exactly. **It has never been run against the real database.**
-6. `/api/results` now includes `"storage": "production"` or `"storage": "preview"` (or `local`),
-   so you can see which namespace a deployment is using. It reveals no secret.
+1. **Fail closed.** No valid namespace means no storage. There is no fallback to `boba:v1`.
+2. **A guard checks every batch of commands before it is sent.** One bad command stops the whole batch:
+   - The command name must be on the allow-list. The website may only use
+     `INCR, DECR, HINCRBY, EXPIRE, TTL, GET, HGETALL`. `FLUSHALL`, `KEYS`, `EVAL`, `SET`, `RENAME` and the like are refused.
+   - **Exact arguments.** Each command must have exactly its own arguments and nothing more:
+     `GET key`; `EXPIRE key seconds` (whole seconds, up to a year); `HINCRBY key field amount` (small whole number);
+     `DEL` 1 to 100 keys; `DBSIZE` none. An extra argument (a smuggled second key, an option) is refused.
+   - **Scans.** Only `SCAN <cursor> MATCH <namespace>:* [COUNT n]`, in that order. The pattern must equal the
+     namespace pattern exactly; a second `MATCH`, any other option, or any other pattern is refused.
+   - **Exact namespace.** Every key must start with `<namespace>:`, including the colon, and have something
+     after it. `boba:v10:total`, `boba:v1total`, and `boba-preview:test-ab:v1:x` (for label `test-a`) are refused.
+     Keys may contain only letters, digits and `: | . _ -`, so a key can never be a wildcard pattern.
+   - **The namespace itself is validated.** The guard only works with `boba:v1` or `boba-preview:<valid label>:v1`.
+3. **One door to Redis.** Only `lib/store.js` sends commands for the website, and it runs the guard first
+   (the in-memory store is guarded too). The two admin scripts wrap their only sender directly in the guard.
+4. **Only `lib/namespace.js` knows namespace names.**
+5. `scripts/snapshot.js` needs `--production` or `--preview` and can only read (`GET, HGETALL, SCAN, TYPE`,
+   plus `DBSIZE` for Production only). `scripts/reset-preview.js` can only name a Preview namespace, refuses to
+   run if `VERCEL_ENV` says production, is a dry run by default, and deleting needs `--delete --confirm <label>`.
+   **Neither has ever been run against the real database.**
+6. `/api/results` includes `"storage": "production"`, `"preview"` or `"local"`, so you can see which namespace a
+   deployment uses. When storage is switched off it says `"configured": false`.
 
-## 3. Tests proving isolation (`test/isolation.test.js`, run with `npm test`)
+## 3. Tests (`test/isolation.test.js`, run with `npm test`)
 
-A pretend Upstash database holds Production data (50 answers) and Preview data side by side,
-and logs every command it receives. The tests show:
+A pretend Upstash database holds Production data (50 answers) and Preview data side by side and logs every command:
 
-- A Preview saves answers only under its own prefix. Production keys are byte-for-byte unchanged,
-  and **not one command even mentions a Production key**.
-- A Preview's results start at 0 even though Production holds 50, so it cannot read Production numbers.
-- A Preview's rate limiter uses Preview keys only. The Production limiter counter is untouched.
-- A Preview with a missing or invalid label (27 bad examples) sends **zero** commands and Production is untouched.
-- Direct attacks from a Preview (INCR, DECR, GET, HGETALL, HINCRBY, EXPIRE, DEL, FLUSHALL, FLUSHDB, KEYS, SCAN, DBSIZE, EVAL, SET, RENAME, mixed batches) are all refused before reaching Redis.
-- The reverse: Production writes and reads only `boba:v1`, leaves every Preview namespace unchanged, ignores any `PREVIEW_NAMESPACE`, and direct attacks on Preview keys are refused.
-- One Preview cannot see another Preview, including one whose label starts the same way (`test-a` vs `test-ab`).
-- Only the exact word `production` selects Production; `Production`, `prod`, `staging`, and blank do not.
-- Look-alike prefixes (`boba:v10:`, `boba:v1`, capitals) are refused.
-- Snapshot and reset tools stay inside their namespace, refuse unsafe settings before sending anything, and never print credentials.
-- Static checks: no other file hard-codes a namespace or talks to Redis directly.
+- A Preview writes only under its own prefix; Production is unchanged and **not even mentioned in any command**.
+  A Preview's results start at 0. Production, in turn, never touches any Preview namespace and ignores `PREVIEW_NAMESPACE`.
+- Direct attacks from either side (INCR, DEL, FLUSHALL, KEYS, SCAN, EVAL, mixed batches) are refused before reaching Redis.
+- **Regression tests for the review findings:** a SCAN with a second `MATCH` is refused (19 variants), and extra
+  arguments on `GET`/`TYPE`/`INCR`/`DECR`/`HGETALL`/`TTL`/`DBSIZE` are refused. The old guard allowed these.
+- Every command is tested for exactly its own argument count and types.
+- Prefix confusion for Production (`boba:v10`, `boba:v1total`) and for Preview labels (`test-a` vs `test-ab`, `abc` vs `abcd`).
+- Environment detection: every unexpected `VERCEL_ENV`, `VERCEL` not `1`, a computer claiming `production`, and an
+  exhaustive check of 1,512 combinations proving that only `VERCEL=1` plus `VERCEL_ENV=production` reaches Production.
+  End to end, a Vercel deployment with a missing or odd `VERCEL_ENV` sends **zero** commands even with a valid label.
+- **Recursive repository scan:** across every file (not just `api/` and `lib/`), only `lib/upstash.js`, `lib/store.js`,
+  `lib/namespace.js` and the two reviewed scripts may mention Redis or its settings; no other server file may use the network
+  (the one exception is `isIP`, an address-format checker); the browser may only call `/api/survey` and `/api/results`;
+  a new file in `scripts/` or any new package fails the test until it is reviewed.
 
-## 4. Remaining security limitations (honest list)
+## ## 4. Remaining security limitations (honest list)
 
 1. **This is a rule in our code, not a wall in the database.** The Preview and Production share
    one Redis password. Anyone holding that token (or code that bypasses `lib/store.js`) can read
@@ -73,8 +82,10 @@ and logs every command it receives. The tests show:
 2. **Preview deployments run code from branches.** A future branch that changes `lib/namespace.js`
    or the guard, or any Preview that is given the live credentials, is only as safe as its review.
    Review changes to these files carefully before merging.
-3. **Vercel decides `VERCEL_ENV`.** If a Production deployment were ever misreported, the
-   namespace would be wrong. This is the same signal Vercel uses for its own environment variables.
+3. **We trust Vercel's `VERCEL` and `VERCEL_ENV`.** If Vercel itself misreported a deployment as production, the
+   namespace would be wrong. A missing or odd value now switches storage off instead. Check once that
+   Settings, Environment Variables, **"Automatically expose System Environment Variables"** is on; otherwise the live site would
+   lose storage after a merge. Also check no custom variable named `VERCEL_ENV` exists on any environment.
 4. **Shared quota and speed.** Preview traffic counts toward the same monthly command limit
    (500,000 on the Free plan) and the same database size.
 5. **The scripts can still hurt Preview data** (by design). `reset-preview.js` deletes only Preview keys.
@@ -102,14 +113,18 @@ Generate the salt: `node -e "console.log(require('crypto').randomBytes(32).toStr
 
 Steps:
 
+0. **Check once, changes nothing:** Settings, Environment Variables. Make sure
+   **"Automatically expose System Environment Variables"** is ticked (Vercel then provides `VERCEL` and
+   `VERCEL_ENV` itself), and that the list contains **no variable you added called `VERCEL` or `VERCEL_ENV`**.
+   If the setting were off, storage would be switched off everywhere (the safe direction).
 1. **Before anything**, take a read-only baseline of live data (use Upstash's read-only token):
    `node scripts/snapshot.js --production --save`. Note the `total`.
 2. Add the four variables above, Preview only, branch `feature/rate-limit` only. Do **not**
    reconnect or re-tick Preview on the Upstash integration.
 3. Variables apply only to new deployments: Deployments, latest `feature/rate-limit`, three dots, **Redeploy**.
 4. Open the preview's `/api/results`. It must show `"storage":"preview"` and `"total":0`.
-   If it says `"configured":false`, a variable is missing or the label is invalid (that is the
-   fail-closed behaviour working).
+   If it says `"configured":false`, a variable is missing, the label is invalid, or Vercel did not provide
+   `VERCEL_ENV` (that is the fail-closed behaviour working; the server log shows the reason, never a secret).
 5. Submit a few test answers on the preview. Submit 6 from one network: the 6th is refused.
 6. Open the **live** site's `/api/results`: its total must be unchanged.
 7. Take the snapshot again (`--production`): total and key counts must equal step 1. In the Upstash Data Browser, preview keys appear under `boba-preview:rate-limit-test:v1:`.
