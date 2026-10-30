@@ -154,40 +154,11 @@ Please check it yourself (it takes a minute):
    tools (Datadog, Dash0 and similar), since an installed one can have its own drain.
 6. Optional: send me a screenshot of the Drains page (it shows no secret values) and I will read it.
 
-## A safe, separate database for testing on a Preview
+## Testing on a Preview without touching live data
 
-**The goal:** the preview can save test answers without ever touching the live database.
-
-**Complication found:** Upstash's pricing page (read 30 Oct 2026) lists the Free plan as
-**1 database per account**, and the live one already uses it. Plans change, so confirm in the
-Upstash console. That leaves these options, best first:
-
-| Option | Isolation | Cost / effort |
-|---|---|---|
-| **A. A second, paid Upstash database** | Fully separate database and token | Check the price in the Upstash console |
-| **B. A second free Upstash account** | Fully separate | Free, but check Upstash's terms first; I would not rely on it |
-| **C. Prefix isolation in the same database** | Weaker: same database and token, different key names. Needs a small code change (a `STORAGE_PREFIX` used only on previews, which refuses to start on a preview without it) and your approval | No cost; slight risk if the guard were wrong |
-| **D. No preview test; test once at launch** | n/a | The real-storage path is tested against a pretend Upstash server, but not yet against the real one. A final test in Production before launch uses numbers that will be reset anyway |
-
-If you pick A or B, do it like this (**never reconnect or re-tick Preview on the existing
-Upstash integration: that could hand Preview the live database**):
-
-1. In the **Upstash console** (not through Vercel), create a new Redis database named for example
-   `boba-lab-preview`. Copy its REST URL and REST token. Make sure the name and URL differ from the live one.
-2. In **Vercel**, project, Settings, **Environment Variables**, add two variables:
-   `UPSTASH_REDIS_REST_URL` (type Config) and `UPSTASH_REDIS_REST_TOKEN` (type **Secret**).
-   Environment: **Preview**, and limit it to the **branch `feature/rate-limit`** only.
-   The code reads these names before the `KV_` ones, so set BOTH.
-3. Also add `RATE_LIMIT_SALT` for the same Preview branch, with a different value from Production.
-4. Variables only apply to new deployments. Open Deployments, the latest `feature/rate-limit`
-   build, three-dot menu, **Redeploy**.
-5. Check it is really separate:
-   - Open the preview's `/api/results`. It should say `"configured":true` and `"total":0`.
-   - Open the live site's `/api/results`: its total must be unchanged before and after your tests.
-   - After 6 test answers from the preview, the 6th is refused. In the Upstash console for the
-     NEW database, a key like `boba:v1:rl:<32 characters>` should exist with a TTL of about 86400
-     seconds, and no key should contain your address.
-6. To undo: delete the Preview variables, and delete the test database.
+Decided: **prefix isolation** inside the one existing Upstash database. Everything about it
+(exact names, the safety checks, limits, and your Vercel steps) is in
+[`environment-isolation.md`](environment-isolation.md).
 
 ## Setting `RATE_LIMIT_SALT` securely
 
@@ -218,15 +189,13 @@ live site, because the live code does not read it.
 
 ## Testing
 
-- Automated: `npm test` (now 72 tests, including a pretend Upstash server).
+- Automated: `npm test` (106 tests, including a pretend Upstash server holding Production and Preview data side by side).
 - Local: `npm run dev` switches the limit on with a throwaway salt. Send 6 answers.
-- Vercel preview: previews have no storage, so the survey shows "storage not configured"
-  and the limit cannot be seen there until a separate test database is connected (see the
-  section above). Never reuse the live database.
+- Vercel preview: it has no storage until you add the Preview-only variables in `environment-isolation.md`.
 
 ## Launch snapshot (READ-ONLY): what would a reset clear?
 
-`scripts/snapshot.js` looks at every `boba:v1:*` key and reports what is there. It can only
+`scripts/snapshot.js --production` looks at every `boba:v1:*` key and reports what is there. It can only
 send GET, HGETALL, SCAN, DBSIZE and TYPE; anything else is refused before it is sent.
 
 1. In Upstash, copy the REST URL and the **read-only token** (it cannot write at all).
@@ -235,7 +204,7 @@ send GET, HGETALL, SCAN, DBSIZE and TYPE; anything else is refused before it is 
    ```
    export UPSTASH_REDIS_REST_URL="...paste..."
    export UPSTASH_REDIS_REST_TOKEN="...paste the READ-ONLY token..."
-   node scripts/snapshot.js --expect 4 --save
+   node scripts/snapshot.js --production --expect 4 --save
    ```
    Replace 4 with how many test answers you remember sending (see the next paragraph).
 3. Read the report. `MATCH` means the total equals your test count. `MISMATCH` means

@@ -1,14 +1,19 @@
-// READ-ONLY snapshot of the live survey counters, to look at BEFORE any reset.
+// READ-ONLY snapshot of the survey counters in ONE namespace, to look at BEFORE any reset.
 //
-//   node scripts/snapshot.js                 show the report on screen
-//   node scripts/snapshot.js --expect 4      also compare the total with how many
-//                                            test answers you remember sending
-//   node scripts/snapshot.js --save          also keep a copy in snapshots/ (never committed)
+//   node scripts/snapshot.js --production      look at the live counters  (keys "boba:v1:*")
+//   node scripts/snapshot.js --preview         look at the Preview counters (needs PREVIEW_NAMESPACE)
 //
-// What it does: looks at every key that starts with "boba:v1:" and reports what is
-// there, sorted into plain categories. It lists what a reset WOULD clear.
-// What it never does: change anything. It can only send these Redis commands:
-// GET, HGETALL, SCAN, DBSIZE and TYPE. Anything else is refused before it is sent.
+// Add any of these:
+//   --expect 4    compare the total with how many test answers you remember sending
+//   --save        also keep a copy in snapshots/ (never committed)
+//
+// You MUST say which one. With neither (or both) the tool stops: it never guesses.
+//
+// What it does: looks at every key inside that ONE namespace and reports what is there,
+// sorted into plain categories. It lists what a reset of that namespace WOULD clear.
+// What it never does: change anything. It can only send GET, HGETALL, SCAN and TYPE
+// (plus DBSIZE for --production, which only counts keys). Every key must be inside the
+// chosen namespace, or the command is refused before it is sent.
 //
 // It reads the same two settings as the website:
 //   UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN   (or the KV_REST_API_ names)
@@ -18,25 +23,24 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { PRODUCTION_NAMESPACE, checkLabel, previewNamespace, guardedRunner } from '../lib/namespace.js';
+import { upstashConfig, sendToUpstash } from '../lib/upstash.js';
 
-const PREFIX = 'boba:v1:';
-export const READ_ONLY_COMMANDS = new Set(['GET', 'HGETALL', 'SCAN', 'DBSIZE', 'TYPE']);
+const READ_COMMANDS = ['GET', 'HGETALL', 'SCAN', 'TYPE'];
+export const SNAPSHOT_COMMANDS = {
+  production: new Set([...READ_COMMANDS, 'DBSIZE']),
+  preview: new Set(READ_COMMANDS), // no DBSIZE: a Preview has no business counting the whole database
+};
 
-// The safety belt: wrap any "send commands" function so it can only read.
-export function readOnly(run) {
-  return async (commands) => {
-    for (const [command] of commands) {
-      if (!READ_ONLY_COMMANDS.has(String(command).toUpperCase())) {
-        throw new Error(`Refused: "${command}" could change data. This tool only reads.`);
-      }
-    }
-    return run(commands);
-  };
+// The safety belt: a "send commands" function that can only read, and only inside `namespace`.
+export function snapshotRunner(send, namespace, kind) {
+  return guardedRunner(send, namespace, SNAPSHOT_COMMANDS[kind]);
 }
 
 // Sort a key name into a plain category.
-export function categorize(key) {
-  const name = key.startsWith(PREFIX) ? key.slice(PREFIX.length) : key;
+export function categorize(key, namespace = PRODUCTION_NAMESPACE) {
+  const prefix = `${namespace}:`;
+  const name = key.startsWith(prefix) ? key.slice(prefix.length) : key;
   if (name === 'total') return 'total';
   if (name === 'drinks') return 'drinksTotal';
   if (name.startsWith('q:')) return 'answers';
@@ -54,21 +58,28 @@ const pairsToCounts = (flat) => {
 };
 const sum = (counts) => Object.values(counts).reduce((a, b) => a + b, 0);
 
-// Collect the facts. `run` must already be wrapped with readOnly().
-export async function takeSnapshot(run) {
+// Collect the facts. `run` must come from snapshotRunner(), so it can only read inside `namespace`.
+export async function takeSnapshot(run, namespace, kind = 'production') {
+  const prefix = `${namespace}:`;
   const keys = [];
   let cursor = '0';
   do {
-    const [[next, batch]] = await run([['SCAN', cursor, 'MATCH', `${PREFIX}*`, 'COUNT', 200]]);
+    const [[next, batch]] = await run([['SCAN', cursor, 'MATCH', `${prefix}*`, 'COUNT', 200]]);
     keys.push(...batch);
     cursor = String(next);
   } while (cursor !== '0');
-  const unique = [...new Set(keys)].sort();
+  const unique = [...new Set(keys)].filter((k) => k.startsWith(prefix)).sort();
 
-  const [databaseSize] = await run([['DBSIZE']]);
+  let keysInDatabase = null; // only the production snapshot is allowed to ask
+  if (SNAPSHOT_COMMANDS[kind].has('DBSIZE')) {
+    const [databaseSize] = await run([['DBSIZE']]);
+    keysInDatabase = Number(databaseSize) || 0;
+  }
 
   const snapshot = {
     takenAt: new Date().toISOString(),
+    kind,
+    namespace,
     total: 0,
     drinksTotal: 0,
     answers: {},        // question -> { answer: count }
@@ -76,28 +87,28 @@ export async function takeSnapshot(run) {
     regional: {},       // question -> { "region|answer": count }
     rateLimitCounters: 0,
     unknownKeys: [],    // [{ key, type }]
-    keysInDatabase: Number(databaseSize) || 0,
-    keysWithOurPrefix: unique.length,
+    keysInDatabase,
+    keysInNamespace: unique.length,
   };
 
   const reads = [];
   for (const key of unique) {
-    const kind = categorize(key);
-    if (kind === 'total' || kind === 'drinksTotal') reads.push({ key, kind, command: ['GET', key] });
-    else if (kind === 'answers' || kind === 'drinkParts' || kind === 'regional') reads.push({ key, kind, command: ['HGETALL', key] });
-    else if (kind === 'rateLimit') snapshot.rateLimitCounters += 1; // counted only, never read
-    else reads.push({ key, kind, command: ['TYPE', key] });
+    const kind2 = categorize(key, namespace);
+    if (kind2 === 'total' || kind2 === 'drinksTotal') reads.push({ key, kind: kind2, command: ['GET', key] });
+    else if (kind2 === 'answers' || kind2 === 'drinkParts' || kind2 === 'regional') reads.push({ key, kind: kind2, command: ['HGETALL', key] });
+    else if (kind2 === 'rateLimit') snapshot.rateLimitCounters += 1; // counted only, never read
+    else reads.push({ key, kind: kind2, command: ['TYPE', key] });
   }
 
   const results = reads.length ? await run(reads.map((r) => r.command)) : [];
-  reads.forEach(({ key, kind }, index) => {
-    const name = key.slice(PREFIX.length);
+  reads.forEach(({ key, kind: kind2 }, index) => {
+    const name = key.slice(prefix.length);
     const value = results[index];
-    if (kind === 'total') snapshot.total = Number(value) || 0;
-    else if (kind === 'drinksTotal') snapshot.drinksTotal = Number(value) || 0;
-    else if (kind === 'answers') snapshot.answers[name.slice(2)] = pairsToCounts(value);
-    else if (kind === 'drinkParts') snapshot.drinkParts[name.slice(6)] = pairsToCounts(value);
-    else if (kind === 'regional') snapshot.regional[name.slice(2)] = pairsToCounts(value);
+    if (kind2 === 'total') snapshot.total = Number(value) || 0;
+    else if (kind2 === 'drinksTotal') snapshot.drinksTotal = Number(value) || 0;
+    else if (kind2 === 'answers') snapshot.answers[name.slice(2)] = pairsToCounts(value);
+    else if (kind2 === 'drinkParts') snapshot.drinkParts[name.slice(6)] = pairsToCounts(value);
+    else if (kind2 === 'regional') snapshot.regional[name.slice(2)] = pairsToCounts(value);
     else snapshot.unknownKeys.push({ key, type: value });
   });
   return snapshot;
@@ -122,8 +133,10 @@ export function consistencyNotes(snapshot) {
 export function describe(snapshot, expected = null) {
   const lines = [];
   const add = (text = '') => lines.push(text);
+  const label = snapshot.kind === 'preview' ? 'PREVIEW' : 'PRODUCTION (LIVE)';
 
-  add('BOBA LAB: READ-ONLY SNAPSHOT');
+  add(`BOBA LAB: READ-ONLY SNAPSHOT of ${label}`);
+  add(`Namespace: ${snapshot.namespace}:*`);
   add(`Taken at ${snapshot.takenAt}. Nothing was changed.`);
   add();
   add(`Submissions counted: ${snapshot.total}`);
@@ -141,15 +154,19 @@ export function describe(snapshot, expected = null) {
   }
   if (!Object.keys(snapshot.regional).length) add('  (none)');
   add();
-  add('A reset of "boba:v1:*" WOULD clear:');
+  add(`A reset of "${snapshot.namespace}:*" WOULD clear:`);
   add(`  - ${Object.keys(snapshot.answers).length} answer counter groups, ${Object.keys(snapshot.regional).length} regional groups, ${Object.keys(snapshot.drinkParts).length} drink groups`);
   add('  - the submission total and the shared-drink total');
   add(`  - ${snapshot.rateLimitCounters} short-lived rate-limit counters (they delete themselves within 24 hours anyway)`);
-  add(`A reset would NOT touch the other ${Math.max(0, snapshot.keysInDatabase - snapshot.keysWithOurPrefix)} key(s) in this database.`);
+  if (snapshot.keysInDatabase !== null) {
+    add(`A reset would NOT touch the other ${Math.max(0, snapshot.keysInDatabase - snapshot.keysInNamespace)} key(s) in this database (for example any Preview namespaces).`);
+  } else {
+    add('A reset would NOT touch any key outside this namespace, including every Production key.');
+  }
 
   if (snapshot.unknownKeys.length) {
     add();
-    add('ATTENTION: keys with our prefix that this tool does not recognise (a reset would delete them too):');
+    add('ATTENTION: keys in this namespace that this tool does not recognise (a reset would delete them too):');
     for (const { key, type } of snapshot.unknownKeys) add(`  - ${key} (${type})`);
   }
 
@@ -176,6 +193,21 @@ export function describe(snapshot, expected = null) {
   return lines.join('\n');
 }
 
+// ---- which namespace? (never guessed) ----------------------------------------------------------
+
+// Turns the command-line words into { kind, namespace } or { error }.
+export function chooseNamespace(args, env = process.env) {
+  const production = args.includes('--production');
+  const preview = args.includes('--preview');
+  if (production === preview) {
+    return { error: 'Say which one to look at: --production (the live counters) or --preview (needs PREVIEW_NAMESPACE). Not both, not neither.' };
+  }
+  if (production) return { kind: 'production', namespace: PRODUCTION_NAMESPACE };
+  const label = checkLabel(env.PREVIEW_NAMESPACE);
+  if (!label.ok) return { error: `--preview needs a valid PREVIEW_NAMESPACE (${label.reason}).` };
+  return { kind: 'preview', namespace: previewNamespace(label.label) };
+}
+
 // ---- running it from the command line -----------------------------------------
 
 async function main() {
@@ -187,23 +219,26 @@ async function main() {
     process.exit(1);
   }
 
-  const hasUpstash = (process.env.UPSTASH_REDIS_REST_URL || process.env.KV_REST_API_URL)
-    && (process.env.UPSTASH_REDIS_REST_TOKEN || process.env.KV_REST_API_TOKEN);
-  if (!hasUpstash) {
-    // Without these, the website code would quietly use a temporary in-memory store,
-    // and we would "snapshot" nothing. Stop instead.
-    console.error('No Upstash settings found. Set UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN first (see docs/repeat-submissions.md).');
+  const chosen = chooseNamespace(args);
+  if (chosen.error) {
+    console.error(chosen.error);
     process.exit(1);
   }
 
-  const { runCommands } = await import('../lib/store.js');
-  const snapshot = await takeSnapshot(readOnly(runCommands));
+  const config = upstashConfig();
+  if (!config) {
+    console.error('No Upstash settings found. Set UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN first (see docs/environment-isolation.md).');
+    process.exit(1);
+  }
+
+  const run = snapshotRunner((commands) => sendToUpstash(config, commands), chosen.namespace, chosen.kind);
+  const snapshot = await takeSnapshot(run, chosen.namespace, chosen.kind);
   console.log(describe(snapshot, expected));
 
   if (args.includes('--save')) {
     const folder = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'snapshots');
     fs.mkdirSync(folder, { recursive: true });
-    const file = path.join(folder, `snapshot-${snapshot.takenAt.replace(/[:.]/g, '-')}.json`);
+    const file = path.join(folder, `snapshot-${chosen.kind}-${snapshot.takenAt.replace(/[:.]/g, '-')}.json`);
     fs.writeFileSync(file, JSON.stringify(snapshot, null, 2));
     console.log(`\nSaved a copy to ${path.relative(process.cwd(), file)} (this folder is git-ignored).`);
   }

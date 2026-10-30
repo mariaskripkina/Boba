@@ -11,7 +11,11 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { startFakeUpstash, FAKE_TOKEN } from '../test-helpers/fake-upstash.js';
 
-const { readOnly, takeSnapshot, describe, categorize, consistencyNotes, READ_ONLY_COMMANDS } = await import('../scripts/snapshot.js');
+const { snapshotRunner, takeSnapshot, describe, categorize, consistencyNotes, SNAPSHOT_COMMANDS, chooseNamespace } = await import('../scripts/snapshot.js');
+
+const PROD = 'boba:v1';
+const prodRun = (fake) => snapshotRunner(runner(fake), PROD, 'production');
+const READ_ONLY_COMMANDS = SNAPSHOT_COMMANDS.production;
 
 // Talk to the fake server the same way the website does (plain HTTPS pipeline).
 const runner = (fake) => async (commands) => {
@@ -40,14 +44,15 @@ function seed(fake) {
 
 test('the safety belt refuses anything that could change data, before it is sent', async () => {
   const sent = [];
-  const guarded = readOnly(async (commands) => { sent.push(commands); return []; });
+  const guarded = snapshotRunner(async (commands) => { sent.push(commands); return []; }, PROD, 'production');
   for (const command of ['SET', 'DEL', 'FLUSHALL', 'FLUSHDB', 'INCR', 'DECR', 'HINCRBY', 'EXPIRE', 'EVAL', 'UNLINK', 'hset', 'del']) {
-    await assert.rejects(() => guarded([['GET', 'a'], [command, 'boba:v1:total']]), /Refused/, command);
+    await assert.rejects(() => guarded([['GET', 'boba:v1:a'], [command, 'boba:v1:total']]), /Refused/, command);
   }
   assert.equal(sent.length, 0, 'nothing may be sent when any command in the batch is unsafe');
-  await guarded([['GET', 'a'], ['hgetall', 'b']]); // reading is fine, in any letter case
+  await guarded([['GET', 'boba:v1:a'], ['hgetall', 'boba:v1:b']]); // reading is fine, in any letter case
   assert.equal(sent.length, 1);
   assert.deepEqual([...READ_ONLY_COMMANDS].sort(), ['DBSIZE', 'GET', 'HGETALL', 'SCAN', 'TYPE']);
+  assert.deepEqual([...SNAPSHOT_COMMANDS.preview].sort(), ['GET', 'HGETALL', 'SCAN', 'TYPE'], 'a Preview snapshot may not even count the whole database');
 });
 
 test('keys are sorted into plain categories', () => {
@@ -66,7 +71,7 @@ test('the snapshot finds exactly our counters, changes nothing, and never reads 
     seed(fake);
     const before = JSON.stringify([...fake.data.entries()]);
 
-    const snapshot = await takeSnapshot(readOnly(runner(fake)));
+    const snapshot = await takeSnapshot(prodRun(fake), PROD, 'production');
 
     assert.equal(snapshot.total, 4);
     assert.equal(snapshot.drinksTotal, 2);
@@ -76,7 +81,7 @@ test('the snapshot finds exactly our counters, changes nothing, and never reads 
     assert.deepEqual(snapshot.drinkParts.tea, { oolong: 2 });
     assert.equal(snapshot.rateLimitCounters, 1);
     assert.deepEqual(snapshot.unknownKeys, []);
-    assert.equal(snapshot.keysWithOurPrefix, 7);
+    assert.equal(snapshot.keysInNamespace, 7);
     assert.equal(snapshot.keysInDatabase, 8);
 
     assert.equal(JSON.stringify([...fake.data.entries()]), before, 'the data must be untouched');
@@ -95,9 +100,9 @@ test('keys we do not recognise are called out, because a reset would delete them
   try {
     seed(fake);
     fake.data.set('boba:v1:mystery', 'who knows');
-    const snapshot = await takeSnapshot(readOnly(runner(fake)));
+    const snapshot = await takeSnapshot(prodRun(fake), PROD, 'production');
     assert.deepEqual(snapshot.unknownKeys, [{ key: 'boba:v1:mystery', type: 'string' }]);
-    assert.match(describe(snapshot), /ATTENTION: keys with our prefix that this tool does not recognise/);
+    assert.match(describe(snapshot), /ATTENTION: keys in this namespace that this tool does not recognise/);
     assert.match(describe(snapshot), /boba:v1:mystery/);
   } finally {
     await fake.close();
@@ -108,7 +113,7 @@ test('the report says what a reset would and would not touch', async () => {
   const fake = await startFakeUpstash();
   try {
     seed(fake);
-    const report = describe(await takeSnapshot(readOnly(runner(fake))));
+    const report = describe(await takeSnapshot(prodRun(fake), PROD, 'production'));
     assert.match(report, /Nothing was changed/);
     assert.match(report, /Submissions counted: 4/);
     assert.match(report, /WOULD clear/);
@@ -125,7 +130,7 @@ test('--expect tells a safe reset apart from one that could lose real answers', 
   const fake = await startFakeUpstash();
   try {
     seed(fake);
-    const snapshot = await takeSnapshot(readOnly(runner(fake)));
+    const snapshot = await takeSnapshot(prodRun(fake), PROD, 'production');
     assert.match(describe(snapshot, 4), /MATCH: the total \(4\) equals the 4 test submission/);
     assert.match(describe(snapshot, 3), /MISMATCH.*DO NOT reset|DO NOT reset/s);
     assert.match(describe(snapshot, 3), /1 submission\(s\) came from somewhere else/);
@@ -145,7 +150,7 @@ test('numbers that cannot all be true are flagged', () => {
 test('an empty database gives a clean, empty report', async () => {
   const fake = await startFakeUpstash();
   try {
-    const snapshot = await takeSnapshot(readOnly(runner(fake)));
+    const snapshot = await takeSnapshot(prodRun(fake), PROD, 'production');
     assert.equal(snapshot.total, 0);
     assert.match(describe(snapshot, 0), /MATCH/);
   } finally {

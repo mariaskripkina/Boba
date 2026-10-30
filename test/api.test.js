@@ -177,6 +177,7 @@ test('Upstash mode: sends counters over HTTPS with the secret token and reads re
   process.env.UPSTASH_REDIS_REST_URL = 'https://example-db.upstash.io/';
   process.env.UPSTASH_REDIS_REST_TOKEN = 'secret-token';
   process.env.VERCEL = '1';
+  process.env.VERCEL_ENV = 'production'; // the live site: uses the "boba:v1" namespace
 
   globalThis.fetch = async (url, options) => {
     const commands = JSON.parse(options.body);
@@ -214,6 +215,7 @@ test('Upstash mode: sends counters over HTTPS with the secret token and reads re
     delete process.env.UPSTASH_REDIS_REST_URL;
     delete process.env.UPSTASH_REDIS_REST_TOKEN;
     delete process.env.VERCEL;
+    delete process.env.VERCEL_ENV;
   }
 });
 
@@ -221,6 +223,7 @@ test('Upstash mode: a database error gives a friendly failure, not a crash', asy
   const realFetch = globalThis.fetch;
   process.env.UPSTASH_REDIS_REST_URL = 'https://example-db.upstash.io';
   process.env.UPSTASH_REDIS_REST_TOKEN = 'secret-token';
+  process.env.VERCEL_ENV = 'production';
   globalThis.fetch = async () => ({ ok: false, status: 500, json: async () => ({}) });
   try {
     const r = await call(survey, 'POST', { answers: { texture: 'chewy' } });
@@ -230,6 +233,7 @@ test('Upstash mode: a database error gives a friendly failure, not a crash', asy
     globalThis.fetch = realFetch;
     delete process.env.UPSTASH_REDIS_REST_URL;
     delete process.env.UPSTASH_REDIS_REST_TOKEN;
+    delete process.env.VERCEL_ENV;
   }
 });
 

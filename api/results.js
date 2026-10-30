@@ -5,7 +5,7 @@
 // reveal what one person chose. We only say how many responses exist so far.
 
 import { sendJson } from '../lib/http.js';
-import { readTotals, storeConfigured } from '../lib/store.js';
+import { readTotals, storeConfigured, storageKind } from '../lib/store.js';
 import { REGIONS } from '../public/js/schema.js';
 
 const DEFAULT_MIN = 10;
@@ -88,13 +88,15 @@ export default async function handler(req, res) {
   try {
     const totals = await readTotals();
     if (totals.total < min) {
-      return sendJson(res, 200, { configured: true, ready: false, min, total: totals.total });
+      return sendJson(res, 200, { configured: true, storage: storageKind(), ready: false, min, total: totals.total });
     }
+    // "storage" says which environment answered ("production" or "preview"), so it is
+    // easy to check that a preview is NOT showing the live numbers.
     // Totals change slowly, so a short cache keeps the page fast and the database calm.
     return sendJson(
       res,
       200,
-      { configured: true, ready: true, min, ...applyMinimum(totals, min) },
+      { configured: true, storage: storageKind(), ready: true, min, ...applyMinimum(totals, min) },
       { 'Cache-Control': 'public, s-maxage=15, stale-while-revalidate=60' }
     );
   } catch (error) {

@@ -42,6 +42,11 @@ export async function startFakeUpstash() {
         data.set(key, hash);
         return hash[rest[0]];
       }
+      case 'DEL': {
+        let removed = 0;
+        for (const k of [key, ...rest]) { if (alive(k)) { data.delete(k); expiry.delete(k); removed += 1; } }
+        return removed;
+      }
       case 'EXPIRE': if (!data.has(key)) return 0; expiry.set(key, now() + Number(rest[0]) * 1000); return 1;
       case 'TTL':
         if (!data.has(key)) return -2;
@@ -83,14 +88,25 @@ export async function startFakeUpstash() {
   return {
     url, data, expiry, log, state,
     advanceClock: (ms) => { state.clockOffset += ms; },
-    // Point the website's storage code at this fake server (and back).
-    connect() {
+    // Everything stored under a namespace (for example 'boba:v1:'), as comparable text.
+    // Used to prove that one environment's data did not change.
+    slice(prefix) {
+      for (const k of [...data.keys()]) alive(k);
+      return JSON.stringify([...data.entries()].filter(([k]) => k.startsWith(prefix)).sort(([a], [b]) => (a < b ? -1 : 1)));
+    },
+    // Point the website's storage code at this fake server (and back), pretending to be
+    // a given environment: 'production' (the default), 'preview' (needs a label), or
+    // 'bare' (credentials but no environment information at all).
+    connect({ environment = 'production', label } = {}) {
       process.env.UPSTASH_REDIS_REST_URL = url;
       process.env.UPSTASH_REDIS_REST_TOKEN = FAKE_TOKEN;
+      if (environment === 'bare') delete process.env.VERCEL_ENV;
+      else process.env.VERCEL_ENV = environment;
+      if (label === undefined) delete process.env.PREVIEW_NAMESPACE;
+      else process.env.PREVIEW_NAMESPACE = label;
     },
     disconnect() {
-      delete process.env.UPSTASH_REDIS_REST_URL;
-      delete process.env.UPSTASH_REDIS_REST_TOKEN;
+      for (const name of ['UPSTASH_REDIS_REST_URL', 'UPSTASH_REDIS_REST_TOKEN', 'VERCEL_ENV', 'PREVIEW_NAMESPACE']) delete process.env[name];
     },
     close: () => new Promise((resolve) => server.close(resolve)),
   };
