@@ -100,6 +100,18 @@ use the old wording and will be replaced:
 Also to check later: the shorter headline "Stakanda" leaves room to make the Uzbek
 title bigger again (the current size rule was set for the longer word).
 
+## New English messages waiting for translation (added by `feature/rate-limit`)
+
+These are in English only for now, so Russian and Uzbek visitors see English until the
+survey stage of the translations. Translate them then, using the glossary.
+
+| Key | English |
+|---|---|
+| `survey.alreadyAnswered` | This browser has already sent answers. If you are someone else, welcome! If it is you again, there is no need: it would count twice in the totals. |
+| `survey.errors.rate_limited` | Several answers have already come from this network today, so new ones are paused to keep the results fair. Please try again tomorrow. |
+
+The privacy sentences in `docs/repeat-submissions.md` will also need translating once approved.
+
 ## Grammar that is not word-for-word
 
 Drink names cannot be translated word by word, so each language gets its own

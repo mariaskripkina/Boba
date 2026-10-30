@@ -16,7 +16,7 @@ import { t, onLanguageChange } from './i18n/index.js';
 export const MY_ANSWERS_KEY = 'boba-lab-my-answers';
 
 // Error codes the server can send (see api/survey.js). Anything else shows the generic message.
-const KNOWN_ERROR_CODES = ['storage_not_configured', 'too_large', 'bad_json', 'invalid_submission', 'save_failed'];
+const KNOWN_ERROR_CODES = ['storage_not_configured', 'too_large', 'bad_json', 'invalid_submission', 'save_failed', 'rate_limited'];
 
 export function initSurvey() {
   const root = document.getElementById('survey-root');
@@ -48,7 +48,11 @@ export function initSurvey() {
     const submit = h('button', { type: 'submit', class: 'btn btn--primary btn--wide' }, t('survey.submit'));
 
     const shareBox = h('input', { type: 'checkbox', id: 'share-drink', name: 'shareDrink' });
+    // A gentle reminder, never a lock: if this browser already sent answers, say so,
+    // and leave the form fully usable (a friend may be borrowing this device).
+    const alreadyAnswered = Boolean(local.get(MY_ANSWERS_KEY));
     const form = h('form', { class: 'survey-form', novalidate: true, 'aria-describedby': 'survey-status' },
+      alreadyAnswered ? h('p', { class: 'survey-form__note', role: 'note' }, t('survey.alreadyAnswered')) : null,
       h('p', { class: 'survey-form__lead' }, t('survey.lead')),
 
       QUESTIONS.map((q) =>

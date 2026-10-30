@@ -17,6 +17,11 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 // (On the live site the default is 10. See .env.example.)
 process.env.MIN_RESPONSES ??= '3';
 
+// Locally, switch the repeat-submission limit on with a throwaway, NON-secret salt so
+// you can see it work (it resets whenever you restart this server). The real salt is a
+// secret and lives only in Vercel's settings.
+process.env.RATE_LIMIT_SALT ??= 'local-development-only-not-a-secret';
+
 const root = path.dirname(fileURLToPath(import.meta.url));
 const publicDir = path.join(root, 'public');
 const port = Number(process.env.PORT) || 3000;

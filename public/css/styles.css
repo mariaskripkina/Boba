@@ -320,6 +320,11 @@ html:lang(uz) .hero h1 { font-size: clamp(2.4rem, 11.4vw, 7.4rem); }
   padding: clamp(18px, 4vw, 34px);
 }
 .survey-form__lead { font-style: italic; margin-bottom: 22px; }
+.survey-form__note {
+  margin-bottom: 18px; padding: 10px 14px;
+  background: var(--pink-soft); border-radius: 14px;
+  font-family: var(--font-ui); font-size: 0.92rem; line-height: 1.45;
+}
 .question { margin-bottom: 26px; }
 .question legend { font-family: var(--font-ui); font-weight: 700; font-size: 1.05rem; line-height: 1.35; margin-bottom: 12px; max-width: 34rem; }
 .share { margin: 8px 0 20px; padding-top: 20px; border-top: 2px dotted rgba(62, 36, 25, 0.35); }

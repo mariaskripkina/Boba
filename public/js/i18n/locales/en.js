@@ -209,6 +209,7 @@ export default {
       thanksNote: 'Nothing about you was saved, only the totals went up.',
       seeResults: 'See the results',
       answerAgain: 'Someone else is here? Answer again',
+      alreadyAnswered: 'This browser has already sent answers. If you are someone else, welcome! If it is you again, there is no need: it would count twice in the totals.',
 
       // The server sends a short code; the site shows the matching message here.
       errors: {
@@ -219,6 +220,7 @@ export default {
         bad_json: 'Something went wrong. Please try again.',
         invalid_submission: 'Something went wrong. Please try again.',
         save_failed: 'Could not save your answers. Please try again.',
+        rate_limited: 'Several answers have already come from this network today, so new ones are paused to keep the results fair. Please try again tomorrow.',
       },
     },
 

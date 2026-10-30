@@ -6,11 +6,13 @@
 // What happens, in order:
 //   1. Only POST is allowed.
 //   2. We read the body and CHECK it against the survey rules (never trust the browser).
-//   3. We add +1 to the matching totals. We do not store the submission itself.
+//   3. We check the polite per-network limit (see lib/ratelimit.js).
+//   4. We add +1 to the matching totals. We do not store the submission itself.
 
 import { sendJson, readJson } from '../lib/http.js';
 import { validateSubmission } from '../public/js/schema.js';
 import { recordSubmission, storeConfigured } from '../lib/store.js';
+import { takeSlot } from '../lib/ratelimit.js';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -45,10 +47,22 @@ export default async function handler(req, res) {
     });
   }
 
+  // Too many answers from this network today? Say so kindly, and count nothing.
+  const slot = await takeSlot(req);
+  if (!slot.allowed) {
+    return sendJson(
+      res,
+      429,
+      { error: 'Too many answers from this network today. Please try again tomorrow.', code: 'rate_limited' },
+      { 'Retry-After': String(slot.retryAfter) },
+    );
+  }
+
   try {
     await recordSubmission({ answers: result.answers, drink: result.drink, region: result.region });
   } catch (error) {
     console.error('recordSubmission failed:', error.message);
+    await slot.release(); // a server hiccup should not use up one of the visitor's answers
     return sendJson(res, 500, { error: 'Could not save your answers. Please try again.', code: 'save_failed' });
   }
 
