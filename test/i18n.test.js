@@ -26,9 +26,8 @@ const { QUESTIONS, REGIONS, validateSubmission } = await import('../public/js/sc
 const { TEAS, FLAVORS, SWEETNESS, TOPPINGS } = await import('../public/js/menu.js');
 const { drinkName, orderDetails, orderText } = await import('../public/js/menu-text.js');
 
-// Languages whose translation is finished. Add 'ru' / 'uz-latn' here when their
-// full translation lands: from then on a missing key fails the tests.
-const COMPLETE = ['en'];
+// Languages whose translation is finished: a missing key in any of them fails the tests.
+const COMPLETE = ['en', 'ru', 'uz-latn'];
 const LOCALES = { en, ru, 'uz-latn': uz };
 
 const PLURAL_CATEGORIES = ['zero', 'one', 'two', 'few', 'many', 'other'];
@@ -113,10 +112,13 @@ test('Uzbek Latin uses the proper letters (ʻ and ʼ), never plain apostrophes',
   assert.ok(name.includes('ʻ'), 'the switcher label must use ʻ too');
 });
 
+// Names and technical terms that are meant to stay as they are in every language.
+const KEPT_AS_IS = /Boba Lab|JavaScript/g;
+
 test('Russian text contains no leftover English words (except the project name)', () => {
   for (const [key, value] of Object.entries(flatten(ru.messages))) {
     for (const text of textsOf(value)) {
-      const cleaned = text.replace(/\{\w+\}/g, '').replace(/Boba Lab/g, '');
+      const cleaned = text.replace(/\{\w+\}/g, '').replace(KEPT_AS_IS, '');
       assert.equal(/[A-Za-z]/.test(cleaned), false, `ru.${key} has Latin letters: ${text}`);
     }
   }
@@ -211,4 +213,228 @@ test('the language-related fonts and their license are bundled with the site', (
   for (const file of urls) assert.ok(fs.existsSync(path.join(root, 'public/fonts', file)), `missing font file ${file}`);
   assert.ok(fs.existsSync(path.join(root, 'public/fonts/Inter-LICENSE.txt')), 'Inter license file is required');
   assert.equal(/https?:\/\/[^)]*\.(woff2?|ttf|otf)/i.test(css), false, 'fonts must not come from outside servers');
+});
+
+
+// ====================================================================================
+// COMPLETENESS: nothing visible may be left untranslated (English, Russian, Uzbek)
+// ====================================================================================
+
+const flatRu = flatten(ru.messages);
+const flatUz = flatten(uz.messages);
+const hasLetters = (text) => /\p{L}/u.test(text.replace(/\{\w+\}/g, '').replace(KEPT_AS_IS, ''));
+
+// Words that are genuinely the same in English and the other language (names, loan words).
+// Anything else that is identical to English means "forgot to translate".
+const SAME_AS_ENGLISH_OK = {
+  ru: new Set([]),
+  'uz-latn': new Set(['menu.flavor.taro', 'menu.flavor.mango', 'menu.flavor.taro']),
+};
+
+test('Russian and Uzbek have exactly the same keys as English, nothing missing and nothing extra', () => {
+  const keysEn = Object.keys(flatEn).sort();
+  assert.deepEqual(Object.keys(flatRu).sort(), keysEn, 'ru keys differ from en');
+  assert.deepEqual(Object.keys(flatUz).sort(), keysEn, 'uz-latn keys differ from en');
+  assert.ok(keysEn.length >= 200, 'English should have all of its messages');
+});
+
+test('no Russian or Uzbek message is just the English text left in place', () => {
+  for (const [code, flat] of [['ru', flatRu], ['uz-latn', flatUz]]) {
+    for (const [key, value] of Object.entries(flat)) {
+      const english = JSON.stringify(flatEn[key]);
+      if (JSON.stringify(value) !== english) continue;
+      const letters = textsOf(value).some(hasLetters);
+      assert.ok(!letters || SAME_AS_ENGLISH_OK[code].has(key), `${code}.${key} is identical to English: ${english}`);
+    }
+  }
+});
+
+test('Russian messages are written in Cyrillic; Uzbek messages contain no Cyrillic at all', () => {
+  for (const [key, value] of Object.entries(flatRu)) {
+    for (const text of textsOf(value)) {
+      if (hasLetters(text)) assert.ok(/[А-Яа-яЁё]/.test(text), `ru.${key} has no Russian letters: ${text}`);
+    }
+  }
+  for (const [key, value] of Object.entries(flatUz)) {
+    for (const text of textsOf(value)) assert.equal(/[А-Яа-яЁё]/.test(text), false, `uz-latn.${key} contains Cyrillic: ${text}`);
+  }
+});
+
+test('Russian is informal «ты»: it never uses the formal «вы» forms', () => {
+  const formal = /(?:^|[^а-яё])(?:вы|вас|вам|вами|ваш|ваша|ваше|ваши|вашего|вашей|вашему|вашим|вашем|вашу)(?:[^а-яё]|$)/i;
+  for (const [key, value] of Object.entries(flatRu)) {
+    for (const text of textsOf(value)) assert.equal(formal.test(text), false, `ru.${key} uses formal "вы": ${text}`);
+  }
+});
+
+test('Russian avoids gendered past-tense verbs about the visitor (-л / -ла after "ты" wording)', () => {
+  // The approved style: present or future tense, never "ты видел/видела".
+  const gendered = /\b(?:был|была|видел|видела|выбрал|выбрала|ответил|ответила|пробовал|пробовала|собрал|собрала|хотел|хотела|мог|могла)\b/i;
+  for (const [key, value] of Object.entries(flatRu)) {
+    for (const text of textsOf(value)) assert.equal(gendered.test(text), false, `ru.${key} has a gendered past-tense verb: ${text}`);
+  }
+});
+
+test('Uzbek never puts endings on "boba", "bubble tea" or "Boba Lab" (approved rule)', () => {
+  const ending = /\b(?:boba|bubble tea|Boba Lab)(?:ni|ng|ngiz|ga|da|dan|ning|si|lar|larni|dagi|ning)\b/i;
+  for (const [key, value] of Object.entries(flatUz)) {
+    for (const text of textsOf(value)) assert.equal(ending.test(text), false, `uz-latn.${key} has an ending on boba: ${text}`);
+  }
+});
+
+test('Uzbek uses «topping», never the rejected word «qoʻshimcha», and the approved key phrases', () => {
+  const all = Object.values(flatUz).flatMap(textsOf).join('\n');
+  assert.equal(/qoʻshimcha/i.test(all), false);
+  assert.equal(flatUz['hero.title'], 'Stakanda nima bor?');
+  assert.equal(flatUz['hero.ctaBuild'], 'Boba tayyorlang');
+  assert.equal(flatUz['nav.build'], 'Tayyorlash');
+  assert.equal(flatUz['surprise.button'], 'Ajablantirib yuboring');
+  assert.equal(flatUz['builder.noToppings'], 'topping yoʻq');
+  assert.equal(flatUz['menu.topping.tapioca'], 'Tapioka sharchalari');
+  assert.equal(flatUz['menu.topping.popping'], 'Sharbatli boba');
+  assert.equal(flatUz['menu.topping.grass-jelly'], 'Giyohli jele');
+  assert.equal(flatUz['meta.title'], 'Boba Lab: bubble tea tayyorlang va taʼmlarni solishtiring');
+  assert.equal(flatRu['hero.title'], 'Что в твоём стаканчике?');
+  assert.equal(flatRu['hero.ctaBuild'], 'Собери свой бабл-ти');
+  assert.equal(flatRu['surprise.button'], 'Удиви меня');
+  assert.equal(flatRu['menu.topping.popping'], 'Поппинг-боба');
+  assert.equal(flatRu['menu.topping.grass-jelly'], 'Травяное желе');
+});
+
+test('Uzbek ʻ only follows o or g, and ʼ always sits between letters', () => {
+  for (const [key, value] of Object.entries(flatUz)) {
+    for (const text of textsOf(value)) {
+      assert.equal(/[^ogOG]ʻ|^ʻ/.test(text), false, `uz-latn.${key}: ʻ must only follow o or g: ${text}`);
+      assert.equal(/(?:^|[^\p{L}])ʼ|ʼ(?:[^\p{L}]|$)/u.test(text), false, `uz-latn.${key}: ʼ must sit between letters: ${text}`);
+    }
+  }
+});
+
+test('Russian plural forms are chosen correctly for every kind of number', () => {
+  const rules = new Intl.PluralRules('ru');
+  const summary = ru.messages.results.summary;
+  const expectedEnding = { 1: 'участник.', 2: 'участника.', 5: 'участников.', 11: 'участников.', 12: 'участников.', 21: 'участник.', 22: 'участника.', 25: 'участников.', 101: 'участник.', 111: 'участников.' };
+  for (const [count, ending] of Object.entries(expectedEnding)) {
+    const form = summary[rules.select(Number(count))];
+    assert.ok(form.endsWith(ending), `${count} -> "${form}" should end with ${ending}`);
+  }
+  for (let n = 0; n < 1200; n += 1) {
+    for (const key of ['summary', 'answeredQuestion', 'regionPeople']) {
+      assert.ok(ru.messages.results[key][rules.select(n)], `ru results.${key} has no form for ${n}`);
+    }
+  }
+  const uzRules = new Intl.PluralRules('uz-Latn');
+  for (let n = 0; n < 50; n += 1) assert.ok(uz.messages.results.summary[uzRules.select(n)], `uz summary has no form for ${n}`);
+});
+
+// ---- drink names and order text (the "grammar" of each language) ---------------------------
+
+const labels = (flat) => ({
+  tea: (id) => flat[`menu.tea.${id}`],
+  flavor: (id) => flat[`menu.flavor.${id}`],
+  topping: (id) => flat[`menu.topping.${id}`],
+});
+const TOPPING_SETS = [[], ['tapioca'], ['tapioca', 'cheese-foam'], ['popping', 'grass-jelly', 'pudding'], ...TOPPINGS.map((x) => [x.id])];
+
+test('Russian and Uzbek build every drink name and order text, with no gaps', () => {
+  for (const [code, locale, flat] of [['ru', ru, flatRu], ['uz-latn', uz, flatUz]]) {
+    const L = labels(flat);
+    let count = 0;
+    for (const tea of TEAS) for (const flavor of FLAVORS) for (const sweet of SWEETNESS) for (const toppings of TOPPING_SETS) {
+      const drink = { tea: tea.id, flavor: flavor.id, sweet: sweet.id, toppings };
+      for (const text of [locale.grammar.drinkName(drink, L), locale.grammar.orderDetails(drink, L)]) {
+        assert.ok(typeof text === 'string' && text.length > 3, `${code} ${JSON.stringify(drink)}`);
+        assert.equal(/undefined|null|\[object|\{/.test(text), false, `${code}: ${text}`);
+        assert.equal(/[А-Яа-яЁё]/.test(text), code === 'ru', `${code}: wrong script in "${text}"`);
+        if (code === 'ru') assert.equal(/[A-Za-z]/.test(text), false, `ru: Latin letters in "${text}"`);
+      }
+      assert.ok(locale.grammar.orderDetails(drink, L).includes(`${sweet.id}%`), `${code}: sweetness missing`);
+      count += 1;
+    }
+    assert.ok(count > 1000);
+  }
+});
+
+test('drink names read the way the approved examples do', () => {
+  const drink = { tea: 'oolong', flavor: 'taro', sweet: '50', toppings: ['tapioca', 'cheese-foam'] };
+  const ruL = labels(flatRu);
+  const uzL = labels(flatUz);
+  assert.equal(ru.grammar.drinkName(drink, ruL), 'Улун с таро');
+  assert.equal(ru.grammar.orderDetails(drink, ruL), 'Сладость 50%, с тапиокой и сырной пенкой');
+  assert.equal(ru.grammar.orderDetails({ ...drink, toppings: [] }, ruL), 'Сладость 50%, без топпингов');
+  assert.equal(ru.grammar.orderDetails({ ...drink, toppings: ['popping', 'grass-jelly', 'pudding'] }, ruL), 'Сладость 50%, с поппинг-бобой, травяным желе и яичным пудингом');
+  assert.equal(ru.grammar.drinkName({ ...drink, tea: 'black', flavor: 'classic' }, ruL), 'Чёрный чай с молоком');
+  assert.equal(uz.grammar.drinkName(drink, uzL), 'Taroli oolong choyi');
+  assert.equal(uz.grammar.orderDetails(drink, uzL), '50% shirin, tapioka sharchalari va pishloqli koʻpik bilan');
+  assert.equal(uz.grammar.orderDetails({ ...drink, toppings: [] }, uzL), '50% shirin, topping yoʻq');
+  assert.equal(uz.grammar.drinkName({ ...drink, tea: 'green', flavor: 'mango' }, uzL), 'Mangoli yashil choy');
+});
+
+// ---- every piece of text the site can show is wired to the language files ------------------------
+
+const publicFile = (name) => fs.readFileSync(path.join(root, 'public', name), 'utf8');
+const jsFiles = fs.readdirSync(path.join(root, 'public/js')).filter((f) => f.endsWith('.js')).map((f) => `js/${f}`);
+
+test('every key the page and scripts use exists in English, Russian and Uzbek', () => {
+  const used = new Set();
+  const html = publicFile('index.html').replace(/<!--[\s\S]*?-->/g, ''); // the explanation comment mentions data-i18n="key"
+  for (const [, key] of html.matchAll(/data-i18n="([^"]+)"/g)) used.add(key);
+  for (const [, pairs] of html.matchAll(/data-i18n-attr="([^"]+)"/g)) {
+    for (const pair of pairs.split(';')) used.add(pair.split(':')[1].trim());
+  }
+  for (const file of jsFiles) {
+    const code = publicFile(file).replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, ''); // comments are not text on the page
+    for (const [, key] of code.matchAll(/\bt\(\s*'([\w.]+)'/g)) used.add(key);
+    for (const [, key] of code.matchAll(/labelKey:\s*'([\w.]+)'/g)) used.add(key);
+  }
+  assert.ok(used.size > 80, `expected to find many keys, found ${used.size}`);
+  for (const key of used) {
+    for (const [code, flat] of [['en', flatEn], ['ru', flatRu], ['uz-latn', flatUz]]) assert.ok(key in flat, `${code} is missing "${key}", which the site uses`);
+  }
+});
+
+test('every server error code the survey can show has a message in every language', () => {
+  const source = publicFile('js/survey.js');
+  const codes = source.match(/KNOWN_ERROR_CODES = \[([^\]]+)\]/)[1].match(/'(\w+)'/g).map((c) => c.replaceAll("'", ''));
+  for (const code of [...codes, 'generic', 'network']) {
+    for (const flat of [flatEn, flatRu, flatUz]) assert.ok(`survey.errors.${code}` in flat, `survey.errors.${code}`);
+  }
+  const server = fs.readFileSync(path.join(root, 'api/survey.js'), 'utf8') + fs.readFileSync(path.join(root, 'lib/http.js'), 'utf8');
+  // method_not_allowed answers someone who opens the address in a browser; the site itself only ever POSTs.
+  const neverShown = new Set(['method_not_allowed']);
+  for (const [, sent] of server.matchAll(/code:\s*'(\w+)'/g)) {
+    assert.ok(codes.includes(sent) || neverShown.has(sent), `server can send "${sent}" but the site has no message for it`);
+  }
+});
+
+test('index.html has no visible text that is not wired to the language files', () => {
+  let html = publicFile('index.html');
+  html = html.replace(/<!--[\s\S]*?-->/g, '').replace(/<head>[\s\S]*?<\/head>/, '').replace(/<noscript>[\s\S]*?<\/noscript>/g, '');
+  html = html.replace(/<p id="footer-text">[\s\S]*?<\/p>/, ''); // drawn by main.js from page.footer
+  html = html.replace(/<(\w+)\b[^>]*data-i18n="[^"]+"[^>]*>[\s\S]*?<\/\1>/g, '');
+  const leftover = html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+  assert.equal(leftover, 'Boba Lab', `these words are not translatable: "${leftover}"`);
+  // Attributes people can hear (aria-label) must be wired too.
+  for (const [tag] of publicFile('index.html').matchAll(/<[^>]*\baria-label="[^"]*"[^>]*>/g)) {
+    assert.match(tag, /data-i18n-attr="[^"]*aria-label:/, `aria-label is not translated in: ${tag}`);
+  }
+});
+
+test('no script writes an English sentence straight onto the page', () => {
+  // Visible words must come from t(). Look for quoted text with a space and a capital
+  // letter being handed to an element or to textContent.
+  const suspicious = /(?:textContent\s*=\s*|h\([^)]*?,\s*\{[^}]*\},\s*)['"`]([A-Z][a-z]+(?:\s+[a-z]+)+[^'"`]*)['"`]/g;
+  for (const file of jsFiles) {
+    const code = publicFile(file).replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+    for (const [, text] of code.matchAll(suspicious)) assert.fail(`${file} writes English text directly: "${text}"`);
+  }
+});
+
+test('every language can be switched to and from, and its name is shown in its own language', () => {
+  assert.deepEqual(LANGUAGES.map((l) => l.code), ['en', 'ru', 'uz-Latn']);
+  assert.deepEqual(LANGUAGES.map((l) => l.name), ['English', 'Русский', 'Oʻzbekcha']);
+  for (const locale of [ru, uz]) {
+    assert.equal(typeof locale.grammar.drinkName, 'function');
+    assert.equal(typeof locale.grammar.orderDetails, 'function');
+  }
 });

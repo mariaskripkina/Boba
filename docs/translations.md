@@ -5,10 +5,10 @@ the language system works, the style decisions, and the glossary that keeps the
 terminology consistent. **The glossary is the source of truth**: translations
 follow it, and when it changes, the translations change with it.
 
-**Status: glossary waiting for final approval.** Russian and Uzbek currently contain a small
-sample in the code (38 of 205 messages). The remaining messages fall back to
-English until this glossary is approved. Nothing is final until a fluent speaker
-has read it.
+**Status: all three languages are complete (205 of 205 messages each), waiting for a fluent-speaker read.**
+The glossary decisions marked "Approved" below are used exactly. Entries marked "Proposed" are also used,
+because they follow from approved decisions, and are the ones to look at first when reviewing.
+Nothing is final until a fluent speaker has read it.
 
 ## How it works (short version)
 
@@ -17,7 +17,7 @@ has read it.
   `50`), so the data is one combined dataset. Only the *labels* change.
 - The chosen language is remembered only in the visitor's own browser. It is never
   sent to the server and never stored with answers (tests enforce this).
-- A missing translation falls back to English, so the site never shows blanks.
+- A missing translation falls back to English, so the site never shows blanks. Tests now make sure none is missing in Russian or Uzbek.
 
 ## Adding a language later (for example Uzbek Cyrillic)
 
@@ -25,7 +25,7 @@ has read it.
 2. Add one entry to `public/js/i18n/languages.js` (code, short label, its own name, `load`).
 3. Run `npm test`. It fails if you used a key that does not exist, forgot a `{placeholder}`, or left an empty message.
 4. If the language needs letters the fonts lack, check `public/fonts/` (Cyrillic is already covered).
-5. Once it is complete, add its code to `COMPLETE` in `test/i18n.test.js`, so missing keys fail from then on.
+5. Once it is complete, add its code to `COMPLETE` in `test/i18n.test.js` (and add its flat list next to `flatRu` / `flatUz` in the completeness tests), so missing keys fail from then on.
 
 ## Style decisions
 
@@ -84,38 +84,21 @@ or the sample you already reviewed, and is still waiting for your final OK.
 | Page description | Oʻzingizga yoqqan bubble tea tayyorlang, qisqa anonim soʻrovnomada qatnashing va taʼmingiz boshqalarnikiga qanchalik mos kelishini bilib oling. | Same rule | Proposed |
 | Share text | Boba tayyorlang va taʼmingiz boshqalarnikiga qanchalik mos kelishini koʻring. | Short, so "boba" | Proposed |
 
-## Sample strings in the code that will change once this is approved
+## What was applied from the glossary
 
-The website code has NOT been changed. These current Uzbek sample strings still
-use the old wording and will be replaced:
+The old Uzbek sample wording was replaced with the approved wording: headline "Stakanda nima bor?", the approved intro,
+"Boba tayyorlang", menu link "Tayyorlash", and the tab title and description without endings on "boba" or "bubble tea".
+The new rate-limit messages (`survey.alreadyAnswered`, `survey.errors.rate_limited`) are translated too.
 
-| Where | Currently in the code | Will become |
-|---|---|---|
-| Headline | Stakaningizda nima bor? | Stakanda nima bor? |
-| Intro | Choy, taʼm va bir nechta qoʻshimcha tanlang. Soʻng taʼmingizni boshqalarnikiga solishtirib koʻring. | The approved intro above |
-| Build button | Bobangizni tuzing | Boba tayyorlang |
-| Menu link "Build" | Tuzish | Tayyorlash |
-| Tab title and description | use *bobangizni* | The proposed texts above |
+Not yet applied: the new privacy wording drafts in `docs/repeat-submissions.md`. The translations of `survey.privacy`,
+`survey.thanksNote` and `about.p3` follow the CURRENT English text. When the new wording is approved, all three languages change together.
 
-Also to check later: the shorter headline "Stakanda" leaves room to make the Uzbek
-title bigger again (the current size rule was set for the longer word).
-
-## New English messages waiting for translation (added by `feature/rate-limit`)
-
-These are in English only for now, so Russian and Uzbek visitors see English until the
-survey stage of the translations. Translate them then, using the glossary.
-
-| Key | English |
-|---|---|
-| `survey.alreadyAnswered` | This browser has already sent answers. If you are someone else, welcome! If it is you again, there is no need: it would count twice in the totals. |
-| `survey.errors.rate_limited` | Several answers have already come from this network today, so new ones are paused to keep the results fair. Please try again tomorrow. |
-
-The privacy sentences in `docs/repeat-submissions.md` will also need translating once approved.
+Also to check later: the shorter headline "Stakanda" leaves room to make the Uzbek title bigger again.
 
 ## Grammar that is not word-for-word
 
-Drink names cannot be translated word by word, so each language gets its own
-small naming rules (the `grammar` part of a locale file). Planned examples:
+Drink names cannot be translated word by word, so each language has its own
+small naming rules (the `grammar` part of a locale file). Tests check every tea, flavor, sweetness and topping combination. Examples:
 
 | English | Русский | Oʻzbekcha |
 |---|---|---|
@@ -125,10 +108,25 @@ small naming rules (the `grammar` part of a locale file). Planned examples:
 Russian also needs three plural forms («1 человек», «2 человека», «5 человек»).
 The engine handles this with the browser's built-in plural rules.
 
+## What the tests check
+
+- Russian and Uzbek have exactly the same keys as English: nothing missing, nothing extra.
+- No message is just English left in place (except names such as Taro and Mango).
+- Russian is in Cyrillic, with no Latin letters except "Boba Lab" and "JavaScript"; Uzbek has no Cyrillic.
+- Russian uses informal «ты», never «вы», and no gendered past-tense verbs about the visitor.
+- Uzbek uses only ʻ and ʼ (ʻ only after o or g), never adds endings to "boba", "bubble tea" or "Boba Lab", and never uses «qoʻshimcha» for topping.
+- Placeholders such as {count} survive; Russian has all four plural forms and picks the right one (1, 2, 5, 11, 21, 22...).
+- Every drink name and order text builds correctly in each language, for every combination.
+- Every key used by `index.html` and the scripts exists in all three languages; `index.html` has no visible text outside the translation system;
+  no script writes an English sentence directly; every server error code has a message in each language.
+
 ## Review status
 
 | Language | Messages | Reviewed by a fluent speaker |
 |---|---|---|
 | English | 205 of 205 | n/a (source) |
-| Russian | 38 of 205 (sample) | sample reviewed |
-| Uzbek (Latin) | 38 of 205 (sample) | glossary decisions reviewed and settled; full text not yet |
+| Russian | 205 of 205 | not yet: please read it, especially the "Proposed" glossary items |
+| Uzbek (Latin) | 205 of 205 | glossary decisions reviewed and settled; full text not yet |
+
+One thing that cannot be translated: the short notice shown when JavaScript is switched off (`<noscript>` in `index.html`), because
+the translation system itself needs JavaScript. It stays in English.
