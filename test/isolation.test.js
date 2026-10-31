@@ -31,7 +31,7 @@ process.env.MIN_RESPONSES = '3';
 process.env.RATE_LIMIT_SALT = 'an-isolation-test-salt-long-enough';
 
 const ns = await import('../lib/namespace.js');
-const { keyFor, runCommands, storeConfigured, resetMemoryStore } = await import('../lib/store.js');
+const { keyFor, runCommands, storeConfigured, storageProblem, resetMemoryStore } = await import('../lib/store.js');
 const survey = (await import('../api/survey.js')).default;
 const results = (await import('../api/results.js')).default;
 const { startFakeUpstash, FAKE_TOKEN } = await import('../test-helpers/fake-upstash.js');
@@ -876,4 +876,74 @@ test('the reset program: dry run by default, refuses unsafe settings, and never 
     assert.equal(fake.slice(`${PROD}:`), productionBefore, 'Production data is exactly as it was');
     assert.equal(real.out.includes(FAKE_TOKEN) || real.err.includes(FAKE_TOKEN), false);
   });
+});
+
+// ---- 8. a preview that "does not work" must say exactly why (found while setting up Preview) ----------------------------------
+
+const ENV_NAMES = ['UPSTASH_REDIS_REST_URL', 'UPSTASH_REDIS_REST_TOKEN', 'KV_REST_API_URL', 'KV_REST_API_TOKEN', 'VERCEL', 'VERCEL_ENV', 'PREVIEW_NAMESPACE'];
+async function withEnv(vars, run) {
+  const saved = Object.fromEntries(ENV_NAMES.map((name) => [name, process.env[name]]));
+  for (const name of ENV_NAMES) delete process.env[name];
+  Object.assign(process.env, vars);
+  try { return await run(); } finally {
+    for (const name of ENV_NAMES) { if (saved[name] === undefined) delete process.env[name]; else process.env[name] = saved[name]; }
+  }
+}
+const SECRET_URL = 'https://secret-db-name.upstash.io';
+const SECRET_TOKEN = 'secret-token-value-12345';
+const CREDS = { UPSTASH_REDIS_REST_URL: SECRET_URL, UPSTASH_REDIS_REST_TOKEN: SECRET_TOKEN };
+
+test('/api/results on a preview names the exact reason storage is off, for every possible cause', async () => {
+  const cases = [
+    ['VERCEL_ENV missing', { VERCEL: '1', PREVIEW_NAMESPACE: 'rate-limit-test', ...CREDS }, 'vercel_env_missing'],
+    ['VERCEL_ENV unexpected', { VERCEL: '1', VERCEL_ENV: 'staging', PREVIEW_NAMESPACE: 'rate-limit-test', ...CREDS }, 'vercel_env_unexpected'],
+    ['namespace not set', { VERCEL: '1', VERCEL_ENV: 'preview', ...CREDS }, 'namespace_missing'],
+    ['namespace empty', { VERCEL: '1', VERCEL_ENV: 'preview', PREVIEW_NAMESPACE: '  ', ...CREDS }, 'namespace_missing'],
+    ['namespace with quotes', { VERCEL: '1', VERCEL_ENV: 'preview', PREVIEW_NAMESPACE: '"rate-limit-test"', ...CREDS }, 'namespace_invalid'],
+    ['namespace with capitals', { VERCEL: '1', VERCEL_ENV: 'preview', PREVIEW_NAMESPACE: 'Rate-Limit', ...CREDS }, 'namespace_invalid'],
+    ['no URL and no token', { VERCEL: '1', VERCEL_ENV: 'preview', PREVIEW_NAMESPACE: 'rate-limit-test' }, 'redis_url_and_token_missing'],
+    ['token only', { VERCEL: '1', VERCEL_ENV: 'preview', PREVIEW_NAMESPACE: 'rate-limit-test', UPSTASH_REDIS_REST_TOKEN: SECRET_TOKEN }, 'redis_url_missing'],
+    ['URL only', { VERCEL: '1', VERCEL_ENV: 'preview', PREVIEW_NAMESPACE: 'rate-limit-test', UPSTASH_REDIS_REST_URL: SECRET_URL }, 'redis_token_missing'],
+    ['empty URL value', { VERCEL: '1', VERCEL_ENV: 'preview', PREVIEW_NAMESPACE: 'rate-limit-test', UPSTASH_REDIS_REST_URL: '', UPSTASH_REDIS_REST_TOKEN: SECRET_TOKEN }, 'redis_url_missing'],
+    ['only the KV_ names exist (Production-only integration)', { VERCEL: '1', VERCEL_ENV: 'preview', PREVIEW_NAMESPACE: 'rate-limit-test', KV_REST_API_URL: SECRET_URL }, 'redis_token_missing'],
+  ];
+  for (const [name, vars, expected] of cases) {
+    await withEnv(vars, async () => {
+      const answer = await get();
+      assert.equal(answer.json.configured, false, name);
+      assert.equal(answer.json.storage, 'off', name);
+      assert.equal(answer.json.problem, expected, name);
+      assert.equal(storageProblem(), expected, name);
+      const text = JSON.stringify(answer.json);
+      assert.equal(text.includes(SECRET_TOKEN) || text.includes(SECRET_URL) || text.includes('secret-db-name'), false, `${name}: a value must never be shown`);
+    });
+  }
+});
+
+test('when a preview is set up correctly there is no problem to report', async () => {
+  await withEnv({ VERCEL: '1', VERCEL_ENV: 'preview', PREVIEW_NAMESPACE: 'rate-limit-test', ...CREDS }, async () => {
+    assert.equal(storageProblem(), null);
+    assert.equal(storeConfigured(), true);
+  });
+  await withEnv({ VERCEL: '1', VERCEL_ENV: 'preview', PREVIEW_NAMESPACE: 'rate-limit-test', KV_REST_API_URL: SECRET_URL, KV_REST_API_TOKEN: SECRET_TOKEN }, async () => {
+    assert.equal(storageProblem(), null, 'the KV_ names work too');
+  });
+  await withEnv({}, async () => assert.equal(storageProblem(), null, 'local memory mode is fine'));
+});
+
+test('Production never adds diagnostic fields to its answer', async () => {
+  await withEnv({ VERCEL: '1', VERCEL_ENV: 'production' }, async () => { // Production with the database variables missing
+    const answer = await get();
+    assert.deepEqual(answer.json, { configured: false, ready: false, min: 3, total: 0 });
+  });
+});
+
+test('every reason code is safe: short lowercase words only', async () => {
+  for (const code of ['vercel_env_missing', 'vercel_env_unexpected', 'vercel_not_1', 'production_claimed_off_vercel', 'namespace_missing', 'namespace_invalid', 'redis_url_missing', 'redis_token_missing', 'redis_url_and_token_missing']) {
+    assert.match(code, /^[a-z0-9_]+$/);
+  }
+  for (const label of BAD_LABELS) {
+    const where = ns.resolveNamespace({ VERCEL: '1', VERCEL_ENV: 'preview', PREVIEW_NAMESPACE: label });
+    assert.match(where.code, /^namespace_(missing|invalid)$/, JSON.stringify(label));
+  }
 });

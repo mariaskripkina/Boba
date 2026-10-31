@@ -5,7 +5,7 @@
 // reveal what one person chose. We only say how many responses exist so far.
 
 import { sendJson } from '../lib/http.js';
-import { readTotals, storeConfigured, storageKind } from '../lib/store.js';
+import { readTotals, storeConfigured, storageKind, storageProblem } from '../lib/store.js';
 import { REGIONS } from '../public/js/schema.js';
 
 const DEFAULT_MIN = 10;
@@ -82,7 +82,11 @@ export default async function handler(req, res) {
   const min = Math.max(1, Number.parseInt(process.env.MIN_RESPONSES, 10) || DEFAULT_MIN);
 
   if (!storeConfigured()) {
-    return sendJson(res, 200, { configured: false, ready: false, min, total: 0 });
+    const answer = { configured: false, ready: false, min, total: 0 };
+    // On a preview, say WHY with a short code (for example "redis_url_missing"), so a setup
+    // mistake can be found in seconds. Never a value, URL or token. Production says nothing extra.
+    if (process.env.VERCEL_ENV !== 'production') Object.assign(answer, { storage: 'off', problem: storageProblem() });
+    return sendJson(res, 200, answer);
   }
 
   try {

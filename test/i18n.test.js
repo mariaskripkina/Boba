@@ -438,3 +438,44 @@ test('every language can be switched to and from, and its name is shown in its o
     assert.equal(typeof locale.grammar.orderDetails, 'function');
   }
 });
+
+
+// ---- the approved glossary in docs/translations.md is really what the website says -------------------------------
+
+test('every APPROVED glossary entry appears on the website, in Russian and in Uzbek', () => {
+  const doc = fs.readFileSync(path.join(root, 'docs/translations.md'), 'utf8');
+  const section = doc.slice(doc.indexOf('## Glossary'), doc.indexOf('## How the boba / bubble tea rule'));
+  const rows = section.split('\n').filter((line) => line.startsWith('|') && /\| Approved \|$/.test(line.trim()));
+  assert.ok(rows.length >= 12, `expected the approved rows, found ${rows.length}`);
+
+  // Everything the site can say, as plain text ({max} shown as 3, the way the glossary writes it).
+  const texts = (flat) => Object.values(flat).flatMap(textsOf).map((x) => x.replace('{max}', '3').toLowerCase());
+  const siteRu = texts(flatRu);
+  const siteUz = texts(flatUz);
+  const clean = (cell) => cell.replace(/\*\*/g, '').trim().toLowerCase();
+
+  for (const row of rows) {
+    const [english, russian, uzbek] = row.split('|').slice(1, 4).map((cell) => cell.trim());
+    assert.ok(siteRu.some((text) => text === clean(russian)), `Russian glossary entry for "${english}" is not on the site: ${russian}`);
+    assert.ok(siteUz.some((text) => text === clean(uzbek)), `Uzbek glossary entry for "${english}" is not on the site: ${uzbek}`);
+  }
+});
+
+test('the old Uzbek sample wording is gone from the whole project (code, docs and tests)', () => {
+  const old = /bobangizni|bobongizni|bobangiz|bobongiz|stakaningizda|\btuzish\b|\btuzing\b/i;
+  const skip = new Set(['node_modules', '.git', 'snapshots']);
+  const visit = (dir) => fs.readdirSync(path.join(root, dir), { withFileTypes: true }).flatMap((entry) => {
+    if (skip.has(entry.name)) return [];
+    const relative = dir ? `${dir}/${entry.name}` : entry.name;
+    return entry.isDirectory() ? visit(relative) : [relative];
+  });
+  for (const file of visit('')) {
+    if (!/\.(js|html|css|md|json)$/.test(file) || file === 'test/i18n.test.js') continue;
+    const text = fs.readFileSync(path.join(root, file), 'utf8');
+    for (const [number, line] of text.split('\n').entries()) {
+      if (!old.test(line)) continue;
+      // The only allowed mentions are rules that FORBID the old words ("no bobangiz") or explain the history.
+      assert.ok(/\b(?:no|never|not|old|forbid|NEVER)\b|Stakaningizda"\)/.test(line), `${file}:${number + 1} still uses the old Uzbek wording: ${line.trim()}`);
+    }
+  }
+});

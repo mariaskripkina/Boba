@@ -123,8 +123,20 @@ Steps:
    reconnect or re-tick Preview on the Upstash integration.
 3. Variables apply only to new deployments: Deployments, latest `feature/rate-limit`, three dots, **Redeploy**.
 4. Open the preview's `/api/results`. It must show `"storage":"preview"` and `"total":0`.
-   If it says `"configured":false`, a variable is missing, the label is invalid, or Vercel did not provide
-   `VERCEL_ENV` (that is the fail-closed behaviour working; the server log shows the reason, never a secret).
+   If it says `"configured":false`, look at the `problem` field (shown on previews only, never a value or secret):
+
+   | `problem` | What it means | What to change |
+   |---|---|---|
+   | `vercel_env_missing` | Vercel did not provide `VERCEL_ENV` | Settings, Environment Variables: tick "Automatically expose System Environment Variables", redeploy |
+   | `vercel_env_unexpected` | `VERCEL_ENV` is not production, preview or development | Remove any custom `VERCEL_ENV` variable you added |
+   | `namespace_missing` | `PREVIEW_NAMESPACE` is not set for this branch | Add it (Preview, branch `feature/rate-limit`), redeploy |
+   | `namespace_invalid` | The label has capitals, quotes, spaces, `:` or `*`, or is too short or a reserved word | Re-enter it as `rate-limit-test` with no quotes |
+   | `redis_url_missing` | `UPSTASH_REDIS_REST_URL` (or `KV_REST_API_URL`) is empty or missing for this deployment | Add it for Preview + branch, redeploy |
+   | `redis_token_missing` | `UPSTASH_REDIS_REST_TOKEN` (or `KV_REST_API_TOKEN`) is empty or missing | Add it for Preview + branch, redeploy |
+   | `redis_url_and_token_missing` | Neither is visible to this deployment | Add both for Preview + branch, redeploy |
+
+   Variables only reach deployments created AFTER they were saved, and a branch-scoped variable only reaches builds of
+   exactly that branch name. The same reason is written once to the deployment's runtime log.
 5. Submit a few test answers on the preview. Submit 6 from one network: the 6th is refused.
 6. Open the **live** site's `/api/results`: its total must be unchanged.
 7. Take the snapshot again (`--production`): total and key counts must equal step 1. In the Upstash Data Browser, preview keys appear under `boba-preview:rate-limit-test:v1:`.
