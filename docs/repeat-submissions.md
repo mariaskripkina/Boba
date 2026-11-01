@@ -200,7 +200,10 @@ live site, because the live code does not read it.
 `scripts/snapshot.js --production` looks at every `boba:v1:*` key and reports what is there. It can only
 send GET, HGETALL, SCAN, DBSIZE and TYPE; anything else is refused before it is sent.
 
-1. In Upstash, copy the REST URL and the **read-only token** (it cannot write at all).
+**Important:** this normal mode uses SCAN, which Upstash's **Read-Only token does not allow** (it fails
+with `401 Unauthorized`). Use a normal token for it, or use the known-keys mode below with the Read-Only token.
+
+1. In Upstash, copy the REST URL and a token (see the note above).
 2. In a terminal, in the project folder (the values go in your terminal only, never in a file
    in the repo):
    ```
@@ -217,6 +220,37 @@ That is why `--expect` exists: if the total equals your test count, nothing real
 A reset (`boba:v1:*`) would clear the counters and the short-lived limiter keys, and would
 not touch any other keys in the database. It happens only after you approve it separately.
 `snapshots/` is git-ignored: never commit snapshot files.
+
+### Known-keys snapshot (works with the Read-Only token)
+
+`node scripts/snapshot.js --production --known-keys --expect 5`
+
+This mode does not use SCAN or KEYS. It reads only the fixed list of counters the website writes
+(`total`, `drinks`, `q:<question>`, `drink:<part>`, `x:<question>`, taken from the website's own schema),
+using plain read requests (`GET {url}/get/<key>` and `GET {url}/hgetall/<key>`), the form Upstash
+documents for the Read-Only token. It cannot send anything else: any other command is refused before a
+request exists.
+
+Windows PowerShell (values stay in this window only; close it afterwards):
+```
+$env:UPSTASH_REDIS_REST_URL   = Read-Host "REST URL"
+$env:UPSTASH_REDIS_REST_TOKEN = Read-Host "Read-Only token"
+node scripts/snapshot.js --production --known-keys --expect 5
+Remove-Item Env:UPSTASH_REDIS_REST_URL, Env:UPSTASH_REDIS_REST_TOKEN
+```
+
+| | normal (SCAN) | `--known-keys` |
+|---|---|---|
+| Works with the Read-Only token | no (401) | yes (expected; see below) |
+| Total, answer, drink and regional counters, and whether they add up | yes | yes |
+| `--expect N` comparison of the total | yes | yes |
+| Stray or unknown keys in `boba:v1:*` | yes | **no** |
+| Rate-limit counters (`rl:*`) | counted | **no** |
+| Size of the whole database | yes | **no** |
+| Enough to approve a reset | yes | **no** |
+
+Not proven until run: the Upstash docs do not explicitly say how every read-only request behaves, so this
+mode's compatibility is expected (it uses the documented form), and the first real run confirms it.
 
 ## Not in this change
 

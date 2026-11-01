@@ -700,8 +700,26 @@ test('RECURSIVE: only store.js and the two reviewed scripts import the raw sende
   }
   for (const file of REVIEWED_ADMIN_SCRIPTS) {
     const text = code(file);
-    assert.equal((text.match(/sendToUpstash\s*\(/g) || []).length, 1, `${file}: exactly one place that sends`);
-    assert.ok(/(?:guardedRunner|snapshotRunner)\(\s*\(commands\)\s*=>\s*sendToUpstash\(config,\s*commands\)/.test(text), `${file}: the sender must be wrapped directly in the guard`);
+    // Every call to either raw sender (the normal one, or the GET-only one used by --known-keys)
+    // must sit DIRECTLY inside a guard, and each sender may be called in at most one place.
+    const calls = text.match(/\b(?:sendToUpstash|sendReadsToUpstash)\s*\(/g) || [];
+    const wrapped = text.match(/(?:guardedRunner|snapshotRunner)\(\s*\(commands\)\s*=>\s*(?:sendToUpstash|sendReadsToUpstash)\(config,\s*commands\)/g) || [];
+    assert.ok(calls.length >= 1, `${file}: expected to find its sender`);
+    assert.equal(wrapped.length, calls.length, `${file}: every raw sender call must be wrapped directly in the guard`);
+    assert.ok((text.match(/\bsendToUpstash\s*\(/g) || []).length <= 1, `${file}: the normal sender is called in at most one place`);
+    assert.ok((text.match(/\bsendReadsToUpstash\s*\(/g) || []).length <= 1, `${file}: the GET-only sender is called in at most one place`);
+  }
+  // The GET-only sender may only ever be used by the snapshot tool, never by the website or the reset tool.
+  for (const file of walk()) {
+    if (isTestFile(file) || file === 'lib/upstash.js' || file === 'scripts/snapshot.js') continue;
+    assert.equal(/sendReadsToUpstash/.test(code(file)), false, `${file} must not use the GET-only sender`);
+  }
+  {
+    // The GET-only sender itself: GET method only, no body, and only the two read paths.
+    const sender = code('lib/upstash.js');
+    const part = sender.slice(sender.indexOf('export async function sendReadsToUpstash'));
+    assert.ok(/method:\s*'GET'/.test(part) && !/body\s*:/.test(part) && !/method:\s*'(?:POST|PUT|DELETE|PATCH)'/.test(part), 'the GET-only sender sends GET requests with no body');
+    assert.ok(/READ_PATHS\s*=\s*\{\s*GET:\s*'get',\s*HGETALL:\s*'hgetall'\s*\}/.test(sender), 'only GET and HGETALL paths exist');
   }
   const store = code('lib/store.js');
   assert.equal((store.match(/sendToUpstash\s*\(/g) || []).length, 1, 'store.js sends in exactly one place');

@@ -10,11 +10,15 @@
 import http from 'node:http';
 
 export const FAKE_TOKEN = 'test-token';
+// Imitates Upstash's Read-Only token as its documentation describes it: plain reads work, and
+// powerful reads such as SCAN (and the /pipeline endpoint, which we cannot confirm) are refused.
+export const FAKE_READONLY_TOKEN = 'readonly-token';
 
 export async function startFakeUpstash() {
   const data = new Map();     // key -> number | { field: number }
   const expiry = new Map();   // key -> time (ms) it disappears
   const log = [];             // every command received: [COMMAND, key, ...]
+  const requests = [];        // every HTTP request received: { method, path, hadBody }
   const state = {
     clockOffset: 0,
     failAll: false,                 // answer every request with HTTP 500
@@ -69,8 +73,25 @@ export async function startFakeUpstash() {
     const chunks = [];
     req.on('data', (c) => chunks.push(c));
     req.on('end', () => {
+      requests.push({ method: req.method, path: req.url, hadBody: chunks.length > 0 });
       if (state.failAll) { res.statusCode = 500; return res.end('boom'); }
-      if (req.headers.authorization !== `Bearer ${FAKE_TOKEN}` || req.url !== '/pipeline') {
+      const bearer = req.headers.authorization;
+      const isFull = bearer === `Bearer ${FAKE_TOKEN}`;
+      const isReadOnly = bearer === `Bearer ${FAKE_READONLY_TOKEN}`;
+      if (!isFull && !isReadOnly) {
+        res.statusCode = 401;
+        return res.end('{"error":"unauthorized"}');
+      }
+      res.setHeader('Content-Type', 'application/json');
+
+      // Plain read, the way Upstash documents it:  GET /get/<key>  or  GET /hgetall/<key>
+      const plain = req.method === 'GET' ? /^\/(get|hgetall)\/(.+)$/.exec(req.url) : null;
+      if (plain) {
+        try { return res.end(JSON.stringify({ result: execute([plain[1], decodeURIComponent(plain[2])]) })); }
+        catch (error) { res.statusCode = 400; return res.end(JSON.stringify({ error: error.message })); }
+      }
+      // Everything else needs the normal token and the /pipeline endpoint.
+      if (isReadOnly || req.method !== 'POST' || req.url !== '/pipeline') {
         res.statusCode = 401;
         return res.end('{"error":"unauthorized"}');
       }
@@ -78,7 +99,6 @@ export async function startFakeUpstash() {
       const answers = commands.map((command) => {
         try { return { result: execute(command) }; } catch (error) { return { error: error.message }; }
       });
-      res.setHeader('Content-Type', 'application/json');
       res.end(JSON.stringify(answers));
     });
   });
@@ -86,7 +106,7 @@ export async function startFakeUpstash() {
   const url = `http://127.0.0.1:${server.address().port}`;
 
   return {
-    url, data, expiry, log, state,
+    url, data, expiry, log, requests, state,
     advanceClock: (ms) => { state.clockOffset += ms; },
     // Everything stored under a namespace (for example 'boba:v1:'), as comparable text.
     // Used to prove that one environment's data did not change.

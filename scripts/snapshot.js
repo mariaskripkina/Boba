@@ -3,6 +3,13 @@
 //   node scripts/snapshot.js --production      look at the live counters  (keys "boba:v1:*")
 //   node scripts/snapshot.js --preview         look at the Preview counters (needs PREVIEW_NAMESPACE)
 //
+// Two ways of looking (both read-only):
+//   default        uses SCAN to list EVERY key in the namespace. Needs a normal Upstash token,
+//                  because Upstash's Read-Only token does not allow SCAN.
+//   --known-keys   reads only the fixed list of counters the website uses (GET and HGETALL, as
+//                  plain HTTP GET requests). Works with the Read-Only token. It cannot see keys
+//                  it does not know about, so it cannot spot strays or count rate-limit counters.
+//
 // Add any of these:
 //   --expect 4    compare the total with how many test answers you remember sending
 //   --save        also keep a copy in snapshots/ (never committed)
@@ -24,17 +31,31 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { PRODUCTION_NAMESPACE, checkLabel, previewNamespace, guardedRunner } from '../lib/namespace.js';
-import { upstashConfig, sendToUpstash } from '../lib/upstash.js';
+import { upstashConfig, sendToUpstash, sendReadsToUpstash } from '../lib/upstash.js';
+import { QUESTIONS, DRINK_FIELDS, COMPARE_QUESTIONS } from '../public/js/schema.js';
 
 const READ_COMMANDS = ['GET', 'HGETALL', 'SCAN', 'TYPE'];
 export const SNAPSHOT_COMMANDS = {
   production: new Set([...READ_COMMANDS, 'DBSIZE']),
   preview: new Set(READ_COMMANDS), // no DBSIZE: a Preview has no business counting the whole database
 };
+// The "known keys" mode may only GET and HGETALL: no SCAN, no KEYS, no TYPE, no DBSIZE.
+export const KNOWN_KEYS_COMMANDS = new Set(['GET', 'HGETALL']);
 
 // The safety belt: a "send commands" function that can only read, and only inside `namespace`.
-export function snapshotRunner(send, namespace, kind) {
-  return guardedRunner(send, namespace, SNAPSHOT_COMMANDS[kind]);
+export function snapshotRunner(send, namespace, kind, mode = 'scan') {
+  return guardedRunner(send, namespace, mode === 'known-keys' ? KNOWN_KEYS_COMMANDS : SNAPSHOT_COMMANDS[kind]);
+}
+
+// The counters the website writes. This list comes from the same schema the website uses.
+export function knownKeyNames() {
+  return [
+    'total',
+    'drinks',
+    ...QUESTIONS.map((q) => `q:${q.id}`),
+    ...Object.keys(DRINK_FIELDS).map((name) => `drink:${name}`),
+    ...COMPARE_QUESTIONS.map((id) => `x:${id}`),
+  ];
 }
 
 // Sort a key name into a plain category.
@@ -114,6 +135,45 @@ export async function takeSnapshot(run, namespace, kind = 'production') {
   return snapshot;
 }
 
+// The same report, built WITHOUT SCAN: only the fixed list of counters is read (GET and HGETALL).
+// What it cannot know is marked null: stray keys, rate-limit counters, the size of the database.
+export async function takeKnownKeysSnapshot(run, namespace, kind = 'production') {
+  const names = knownKeyNames();
+  const results = await run(names.map((name) => [name === 'total' || name === 'drinks' ? 'GET' : 'HGETALL', `${namespace}:${name}`]));
+
+  const snapshot = {
+    takenAt: new Date().toISOString(),
+    mode: 'known-keys',
+    kind,
+    namespace,
+    total: 0,
+    drinksTotal: 0,
+    answers: {},
+    drinkParts: {},
+    regional: {},
+    rateLimitCounters: null, // not looked at in this mode
+    unknownKeys: null,       // cannot be looked for without SCAN
+    keysInDatabase: null,
+    keysInNamespace: 0,      // here: how many of the known counters exist
+  };
+  names.forEach((name, index) => {
+    const value = results[index];
+    if (name === 'total' || name === 'drinks') {
+      if (value === null || value === undefined) return;
+      snapshot.keysInNamespace += 1;
+      snapshot[name === 'total' ? 'total' : 'drinksTotal'] = Number(value) || 0;
+      return;
+    }
+    const counts = pairsToCounts(value);
+    if (Object.keys(counts).length === 0) return;
+    snapshot.keysInNamespace += 1;
+    if (name.startsWith('q:')) snapshot.answers[name.slice(2)] = counts;
+    else if (name.startsWith('drink:')) snapshot.drinkParts[name.slice(6)] = counts;
+    else snapshot.regional[name.slice(2)] = counts;
+  });
+  return snapshot;
+}
+
 // Spot numbers that cannot all be true at once. (A pipeline is not atomic, so a
 // request that stopped half-way could leave a small mismatch.)
 export function consistencyNotes(snapshot) {
@@ -135,7 +195,8 @@ export function describe(snapshot, expected = null) {
   const add = (text = '') => lines.push(text);
   const label = snapshot.kind === 'preview' ? 'PREVIEW' : 'PRODUCTION (LIVE)';
 
-  add(`BOBA LAB: READ-ONLY SNAPSHOT of ${label}`);
+  const known = snapshot.mode === 'known-keys';
+  add(`BOBA LAB: READ-ONLY SNAPSHOT of ${label}${known ? ' (KNOWN KEYS ONLY)' : ''}`);
   add(`Namespace: ${snapshot.namespace}:*`);
   add(`Taken at ${snapshot.takenAt}. Nothing was changed.`);
   add();
@@ -154,17 +215,23 @@ export function describe(snapshot, expected = null) {
   }
   if (!Object.keys(snapshot.regional).length) add('  (none)');
   add();
-  add(`A reset of "${snapshot.namespace}:*" WOULD clear:`);
-  add(`  - ${Object.keys(snapshot.answers).length} answer counter groups, ${Object.keys(snapshot.regional).length} regional groups, ${Object.keys(snapshot.drinkParts).length} drink groups`);
-  add('  - the submission total and the shared-drink total');
-  add(`  - ${snapshot.rateLimitCounters} short-lived rate-limit counters (they delete themselves within 24 hours anyway)`);
-  if (snapshot.keysInDatabase !== null) {
-    add(`A reset would NOT touch the other ${Math.max(0, snapshot.keysInDatabase - snapshot.keysInNamespace)} key(s) in this database (for example any Preview namespaces).`);
+  if (known) {
+    add(`Known counters that exist: ${snapshot.keysInNamespace}. Only these fixed counters were read (GET and HGETALL).`);
+    add('NOT checked in this mode: keys this tool does not know about, rate-limit counters, and the size of the database.');
+    add('So this is NOT enough to approve a reset: run the normal snapshot (without --known-keys) for that.');
   } else {
-    add('A reset would NOT touch any key outside this namespace, including every Production key.');
+    add(`A reset of "${snapshot.namespace}:*" WOULD clear:`);
+    add(`  - ${Object.keys(snapshot.answers).length} answer counter groups, ${Object.keys(snapshot.regional).length} regional groups, ${Object.keys(snapshot.drinkParts).length} drink groups`);
+    add('  - the submission total and the shared-drink total');
+    add(`  - ${snapshot.rateLimitCounters} short-lived rate-limit counters (they delete themselves within 24 hours anyway)`);
+    if (snapshot.keysInDatabase !== null) {
+      add(`A reset would NOT touch the other ${Math.max(0, snapshot.keysInDatabase - snapshot.keysInNamespace)} key(s) in this database (for example any Preview namespaces).`);
+    } else {
+      add('A reset would NOT touch any key outside this namespace, including every Production key.');
+    }
   }
 
-  if (snapshot.unknownKeys.length) {
+  if (!known && snapshot.unknownKeys.length) {
     add();
     add('ATTENTION: keys in this namespace that this tool does not recognise (a reset would delete them too):');
     for (const { key, type } of snapshot.unknownKeys) add(`  - ${key} (${type})`);
@@ -183,7 +250,7 @@ export function describe(snapshot, expected = null) {
     add(`Re-run with  --expect <how many test submissions you sent>  to compare with ${snapshot.total}.`);
   } else if (snapshot.total === expected) {
     add(`MATCH: the total (${snapshot.total}) equals the ${expected} test submission(s) you expect.`);
-    add('Nothing here should be a real participant. You can approve the reset.');
+    add(known ? 'Nothing here should be a real participant (known counters only; run the normal snapshot before any reset).' : 'Nothing here should be a real participant. You can approve the reset.');
   } else if (snapshot.total > expected) {
     add(`MISMATCH: the total is ${snapshot.total} but you expect ${expected} test submission(s).`);
     add(`${snapshot.total - expected} submission(s) came from somewhere else. DO NOT reset until you know who they were.`);
@@ -231,14 +298,18 @@ async function main() {
     process.exit(1);
   }
 
-  const run = snapshotRunner((commands) => sendToUpstash(config, commands), chosen.namespace, chosen.kind);
-  const snapshot = await takeSnapshot(run, chosen.namespace, chosen.kind);
+  // Each sender is wrapped DIRECTLY in its guard. "Known keys" mode uses the GET-only sender and a
+  // GET/HGETALL-only allow-list; the normal mode keeps the original SCAN-based path unchanged.
+  const knownKeys = args.includes('--known-keys');
+  const snapshot = knownKeys
+    ? await takeKnownKeysSnapshot(snapshotRunner((commands) => sendReadsToUpstash(config, commands), chosen.namespace, chosen.kind, 'known-keys'), chosen.namespace, chosen.kind)
+    : await takeSnapshot(snapshotRunner((commands) => sendToUpstash(config, commands), chosen.namespace, chosen.kind), chosen.namespace, chosen.kind);
   console.log(describe(snapshot, expected));
 
   if (args.includes('--save')) {
     const folder = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'snapshots');
     fs.mkdirSync(folder, { recursive: true });
-    const file = path.join(folder, `snapshot-${chosen.kind}-${snapshot.takenAt.replace(/[:.]/g, '-')}.json`);
+    const file = path.join(folder, `snapshot-${chosen.kind}${knownKeys ? '-known-keys' : ''}-${snapshot.takenAt.replace(/[:.]/g, '-')}.json`);
     fs.writeFileSync(file, JSON.stringify(snapshot, null, 2));
     console.log(`\nSaved a copy to ${path.relative(process.cwd(), file)} (this folder is git-ignored).`);
   }
