@@ -48,7 +48,6 @@ and a counter without one is repaired so nobody is blocked forever.
   Anyone who has BOTH the secret `RATE_LIMIT_SALT` and a copy of the database could test
   "did this address send an answer in the last day?". Keep the salt secret and out of GitHub.
   Changing the salt makes old codes useless.
-- **The site's privacy wording is now slightly out of date** (see "Proposed wording").
 - **IP addresses are generally treated as personal data by privacy laws** (for example
   GDPR in Europe). Scrambling reduces the risk but does not remove the category. Before a
   public launch, especially one aimed at young people, check the rules that apply to you
@@ -88,10 +87,13 @@ What I checked in Vercel's documentation (read on 30 Oct 2026):
 The scrambled code and the totals sit in different places and nothing connects them. We
 keep no per-answer timestamps. So the code does not reveal which answers came from whom.
 
-## Proposed wording (waiting for your approval, NOT applied to the site)
+## Privacy wording (APPLIED on `feature/rate-limit`, waiting for a fluent-speaker read)
 
-Three existing sentences say or imply "only totals are saved". With this feature a
-scrambled code exists for up to 24 hours, so they should change before the branch is merged.
+Three existing sentences said or implied "only totals are saved". With this feature a
+scrambled code exists for up to 24 hours, so they were changed. The versions below are the DRAFTS; the
+final wording on the site also says that the hosting provider (Vercel) may process the network address, and that the visitor's own
+answers stay on their device. The exact live text is in `public/js/i18n/locales/` (`survey.privacy`, `survey.thanksNote`, `about.p3`),
+and a test checks that all three languages mention the 24 hours, Vercel, and that the address itself is not stored.
 The Russian and Uzbek drafts follow the glossary (casual «ты» in Russian, «siz» and the
 proper ʻ and ʼ letters in Uzbek) and pass the same checks the site's tests use.
 **They have not been read by a fluent speaker yet.**

@@ -113,7 +113,7 @@ test('Uzbek Latin uses the proper letters (ʻ and ʼ), never plain apostrophes',
 });
 
 // Names and technical terms that are meant to stay as they are in every language.
-const KEPT_AS_IS = /Boba Lab|JavaScript/g;
+const KEPT_AS_IS = /Boba Lab|JavaScript|Vercel/g;
 
 test('Russian text contains no leftover English words (except the project name)', () => {
   for (const [key, value] of Object.entries(flatten(ru.messages))) {
@@ -477,5 +477,28 @@ test('the old Uzbek sample wording is gone from the whole project (code, docs an
       // The only allowed mentions are rules that FORBID the old words ("no bobangiz") or explain the history.
       assert.ok(/\b(?:no|never|not|old|forbid|NEVER)\b|Stakaningizda"\)/.test(line), `${file}:${number + 1} still uses the old Uzbek wording: ${line.trim()}`);
     }
+  }
+});
+
+
+// ---- the privacy disclosures must say what the site really does, in every language -----------------------------
+
+test('privacy wording in all three languages covers the four facts that are true of the site', () => {
+  for (const [code, flat] of [['en', flatEn], ['ru', flatRu], ['uz-latn', flatUz]]) {
+    for (const key of ['survey.privacy', 'about.p3']) {
+      const text = flat[key];
+      assert.ok(text.includes('24'), `${code}.${key}: must say the scrambled code is kept up to 24 hours`);
+      assert.ok(text.includes('Vercel'), `${code}.${key}: must say the host (Vercel) may process the network address`);
+    }
+  }
+  // The old, now untrue, promises must be gone.
+  assert.equal(/only totals are saved|exist anywhere/i.test(`${flatEn['survey.privacy']} ${flatEn['about.p3']}`), false);
+  assert.equal(/Сохраняются только общие цифры|нигде нет|нигде не хранятся/i.test(`${flatRu['survey.privacy']} ${flatRu['about.p3']}`), false);
+  assert.equal(/Faqat umumiy hisoblar saqlanadi|hech qayerda yoʻq/i.test(`${flatUz['survey.privacy']} ${flatUz['about.p3']}`), false);
+  // And the code says nothing it contradicts: no raw address and no individual response is ever stored (see ratelimit/api tests).
+  for (const [code, flat] of [['en', flatEn], ['ru', flatRu], ['uz-latn', flatUz]]) {
+    assert.ok(/never the address itself|сам адрес не сохраняется|manzilning oʻzi/.test(flat['survey.privacy']), `${code}: must say the address itself is not stored`);
+    assert.ok(/not linked|не связан|bogʻlanmagan/.test(flat['about.p3']), `${code}: must say the code is not linked to answers`);
+    assert.ok(flat['survey.thanksNote'].length > 10 && !/Nothing about you|ничего не сохранилось|hech narsa saqlanmadi/.test(flat['survey.thanksNote']), `${code}: thanks note must not claim that nothing at all was stored`);
   }
 });

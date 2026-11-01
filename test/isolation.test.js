@@ -947,3 +947,18 @@ test('every reason code is safe: short lowercase words only', async () => {
     assert.match(where.code, /^namespace_(missing|invalid)$/, JSON.stringify(label));
   }
 });
+
+test('/api/results says whether the repeat-submission limit is active, without showing the salt', async () => {
+  const salt = process.env.RATE_LIMIT_SALT;
+  await withFake(async (fake) => {
+    fake.connect({ environment: 'production' });
+    assert.equal((await get()).json.limiter, 'on');
+    delete process.env.RATE_LIMIT_SALT;
+    const off = await get();
+    assert.equal(off.json.limiter, 'off', 'no salt means the limit is off, and the answer says so');
+    process.env.RATE_LIMIT_SALT = 'too-short';
+    assert.equal((await get()).json.limiter, 'off', 'a salt under 16 characters does not count');
+    process.env.RATE_LIMIT_SALT = salt;
+    assert.equal(JSON.stringify((await get()).json).includes(salt), false);
+  });
+});

@@ -6,6 +6,7 @@
 
 import { sendJson } from '../lib/http.js';
 import { readTotals, storeConfigured, storageKind, storageProblem } from '../lib/store.js';
+import { limitSettings } from '../lib/ratelimit.js';
 import { REGIONS } from '../public/js/schema.js';
 
 const DEFAULT_MIN = 10;
@@ -89,10 +90,14 @@ export default async function handler(req, res) {
     return sendJson(res, 200, answer);
   }
 
+  // "on" when RATE_LIMIT_SALT is set (long enough), so the repeat-submission limit is active. A way to check
+  // a deployment without opening any settings. It shows no value.
+  const limiter = limitSettings().salt ? 'on' : 'off';
+
   try {
     const totals = await readTotals();
     if (totals.total < min) {
-      return sendJson(res, 200, { configured: true, storage: storageKind(), ready: false, min, total: totals.total });
+      return sendJson(res, 200, { configured: true, storage: storageKind(), limiter, ready: false, min, total: totals.total });
     }
     // "storage" says which environment answered ("production" or "preview"), so it is
     // easy to check that a preview is NOT showing the live numbers.
@@ -100,7 +105,7 @@ export default async function handler(req, res) {
     return sendJson(
       res,
       200,
-      { configured: true, storage: storageKind(), ready: true, min, ...applyMinimum(totals, min) },
+      { configured: true, storage: storageKind(), limiter, ready: true, min, ...applyMinimum(totals, min) },
       { 'Cache-Control': 'public, s-maxage=15, stale-while-revalidate=60' }
     );
   } catch (error) {
