@@ -11,6 +11,22 @@
 @font-face { font-family: 'Lora'; font-weight: 400 700; font-style: normal; font-display: swap; src: url('/fonts/Lora-Variable.woff') format('woff'); }
 @font-face { font-family: 'Lora'; font-weight: 400 700; font-style: italic; font-display: swap; src: url('/fonts/Lora-Italic-Variable.woff') format('woff'); }
 
+/* ---- Extra letters for Russian and Uzbek (added for the language switcher) ----
+   The faces above only contain Latin letters. These extra faces use the SAME
+   font names but are limited by `unicode-range` to Cyrillic letters and the two
+   Uzbek marks (ʻ and ʼ). The browser picks the right file letter by letter, so
+   English text still uses exactly the same fonts as before, and these files are
+   only downloaded when a page actually contains such letters.
+   They are declared AFTER the faces above on purpose: for overlapping letters,
+   the browser prefers the face declared last.
+   - Headings and buttons ("Poppins" has no Cyrillic): Inter, bundled here.
+   - Body text: Lora's own Cyrillic letters. */
+@font-face { font-family: 'Poppins'; font-weight: 400; font-style: normal; font-display: swap; src: url('/fonts/Inter-Regular-cyr.woff') format('woff'); unicode-range: U+0400-052F, U+2116, U+02BB-02BC; }
+@font-face { font-family: 'Poppins'; font-weight: 500; font-style: normal; font-display: swap; src: url('/fonts/Inter-Medium-cyr.woff') format('woff'); unicode-range: U+0400-052F, U+2116, U+02BB-02BC; }
+@font-face { font-family: 'Poppins'; font-weight: 700; font-style: normal; font-display: swap; src: url('/fonts/Inter-Bold-cyr.woff') format('woff'); unicode-range: U+0400-052F, U+2116, U+02BB-02BC; }
+@font-face { font-family: 'Lora'; font-weight: 400 700; font-style: normal; font-display: swap; src: url('/fonts/Lora-Cyrillic-Variable.woff') format('woff'); unicode-range: U+0400-052F, U+2116, U+02BB-02BC; }
+@font-face { font-family: 'Lora'; font-weight: 400 700; font-style: italic; font-display: swap; src: url('/fonts/Lora-Cyrillic-Italic-Variable.woff') format('woff'); unicode-range: U+0400-052F, U+2116, U+02BB-02BC; }
+
 /* ---- Colors and sizes, in one place ---- */
 :root {
   --milk: #F6EBDD;        /* creamy background */
@@ -115,6 +131,34 @@ legend { padding: 0; }
 }
 .site-header nav a:hover { background: var(--pink-soft); }
 
+/* ---- Language switcher (new) ----
+   Phones: it sits at the right end of the first row, next to the logo, so it is
+   always visible without opening a menu. The page links drop to their own row.
+   Wider screens: it sits beside the logo and the links go to the right.
+   Small screens show short codes (EN RU UZ); wide screens show each language's own name. */
+.lang-switch {
+  display: inline-flex; gap: 2px; padding: 3px; margin-left: auto;
+  background: var(--paper); border: 2px solid var(--tea); border-radius: 999px;
+}
+.lang-switch__btn {
+  min-width: 44px; min-height: 40px; padding: 0 12px;
+  font-family: var(--font-ui); font-weight: 500; font-size: 0.85rem; line-height: 1;
+  color: var(--tea); background: transparent; border: 0; border-radius: 999px; cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+.lang-switch__btn:hover { background: var(--pink-soft); }
+.lang-switch__btn[aria-pressed="true"] { background: var(--tea); color: var(--milk); }
+.lang-switch__full { display: none; }
+.site-header nav { flex-basis: 100%; }
+@media (min-width: 720px) {
+  .lang-switch { margin-left: 0; }
+  .site-header nav { flex-basis: auto; margin-left: auto; }
+}
+@media (min-width: 900px) {
+  .lang-switch__short { display: none; }
+  .lang-switch__full { display: inline; }
+}
+
 /* ---- Section basics ---- */
 .section-head { max-width: 40rem; margin-bottom: 32px; }
 .section-head h2 { font-size: clamp(2rem, 6.5vw, 3.4rem); letter-spacing: -0.03em; }
@@ -141,6 +185,17 @@ legend { padding: 0; }
   line-height: 0.92; letter-spacing: -0.05em;
   max-width: 9ch;
 }
+/* Russian and Uzbek have longer words than English ("стаканчике", "Stakaningizda"),
+   so their big title is a little smaller. That keeps it on the screen on phones
+   and out of the cup's way on desktop. English keeps the size above. The sizes
+   come from measuring the longest title word in each language. */
+html:lang(ru) .hero h1 { font-size: clamp(3rem, 14.5vw, 7.4rem); }
+html:lang(uz) .hero h1 { font-size: clamp(2.4rem, 11.4vw, 7.4rem); }
+@media (min-width: 900px) {
+  html:lang(ru) .hero h1 { font-size: clamp(3rem, 8.4vw, 6.2rem); }
+  html:lang(uz) .hero h1 { font-size: clamp(3.2rem, 7vw, 5.4rem); }
+}
+
 .hero__lead { margin-top: 28px; font-size: 1.2rem; max-width: 30rem; }
 .hero__actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 28px; }
 
@@ -162,6 +217,18 @@ legend { padding: 0; }
 }
 .hero__cup-button > span { display: block; }
 .hero__hint { position: relative; z-index: 1; margin-top: 10px; font-family: var(--font-ui); font-size: 0.85rem; font-weight: 500; }
+
+/* Spacing under the buttons, when the page is a single column (below 900px).
+   The pink circle is drawn behind the cup and can be taller than the cup's own box, so on
+   wider single-column screens (large phones turned sideways, tablets, preview panels,
+   roughly 480 to 899px) it used to poke up into the buttons.
+   This makes the box at least as tall as the circle (its size is unchanged), so the circle
+   always starts about 30px below the buttons. Phones keep their larger gap and desktop is
+   untouched. A browser that does not know "cqw" simply skips this rule. */
+@media (max-width: 899px) {
+  .hero { container-type: inline-size; }
+  .hero__stage { min-height: calc(min(86cqw, 440px) * 1.04 + 4px); }
+}
 
 /* ==========================================================================
    The cup (SVG)
@@ -265,6 +332,11 @@ legend { padding: 0; }
   padding: clamp(18px, 4vw, 34px);
 }
 .survey-form__lead { font-style: italic; margin-bottom: 22px; }
+.survey-form__note {
+  margin-bottom: 18px; padding: 10px 14px;
+  background: var(--pink-soft); border-radius: 14px;
+  font-family: var(--font-ui); font-size: 0.92rem; line-height: 1.45;
+}
 .question { margin-bottom: 26px; }
 .question legend { font-family: var(--font-ui); font-weight: 700; font-size: 1.05rem; line-height: 1.35; margin-bottom: 12px; max-width: 34rem; }
 .share { margin: 8px 0 20px; padding-top: 20px; border-top: 2px dotted rgba(62, 36, 25, 0.35); }
@@ -320,6 +392,18 @@ legend { padding: 0; }
 .pearl-meter { display: flex; flex-wrap: wrap; gap: 6px; }
 .pearl-meter li { width: 22px; height: 22px; border-radius: 50%; border: 2px dashed var(--tea); }
 .pearl-meter li.is-filled { background: var(--tea); border-style: solid; box-shadow: inset -3px -3px 0 rgba(255,255,255,0.15); }
+
+/* ---- Regional comparisons (new): uses the same cards and bars as above ---- */
+.question__optional { font-weight: 400; color: #5B4234; }
+.question__hint { font-size: 0.92rem; margin: -6px 0 12px; }
+
+.regional__intro, .regional__empty { grid-column: 1 / -1; max-width: 40rem; }
+.regional__intro { font-style: italic; margin-bottom: 18px; }
+.chart--regional { grid-column: 1 / -1; }
+.region-blocks { display: grid; gap: 18px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr)); }
+.region-block { padding: 16px 18px 18px; background: var(--paper); border: 2px solid var(--tea); border-radius: 22px; }
+.region-block h4 { margin: 0; font-family: var(--font-ui); font-weight: 700; font-size: 1.02rem; line-height: 1.35; }
+.region-block__n { margin: 2px 0 12px; font-family: var(--font-ui); font-size: 0.85rem; color: #5B4234; }
 
 /* The demo preview must never be mistaken for real findings. */
 .demo-banner {

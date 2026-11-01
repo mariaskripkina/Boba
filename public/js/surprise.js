@@ -2,51 +2,47 @@
 //
 // These are hand-picked ideas, not rankings or "the best". Each one is chosen
 // because the flavors have a reason to work together. The notes say why.
+//
+// The ideas below are just ids. Their explanations live in the language files
+// (surprise.ideas.<id>), so each language can explain them in its own natural way.
 
 import { h, prefersReducedMotion } from './dom.js';
-import { drinkName, orderText } from './menu.js';
+import { drinkName, orderDetails } from './menu-text.js';
 import { mountCup } from './cup.js';
 import { getDrink, setDrink } from './state.js';
+import { t, onLanguageChange } from './i18n/index.js';
 
 const IDEAS = [
-  { id: 'osmanthus-oolong', tea: 'oolong', flavor: 'osmanthus', sweet: '30', toppings: ['lychee-jelly'],
-    note: 'Osmanthus smells a bit like apricot and flowers, and it sits nicely on oolong\'s toasty base.' },
-  { id: 'passion-jasmine', tea: 'jasmine', flavor: 'passion', sweet: '50', toppings: ['popping'],
-    note: 'Tart passion fruit cuts through jasmine\'s perfume, and the popping boba adds little bursts.' },
-  { id: 'coconut-grass', tea: 'black', flavor: 'coconut', sweet: '30', toppings: ['grass-jelly'],
-    note: 'Grass jelly is herbal and a little bitter, which balances creamy coconut.' },
-  { id: 'barley-bean', tea: 'barley', flavor: 'brown-sugar', sweet: '50', toppings: ['red-bean'],
-    note: 'Toasty on toasty, with no caffeine. Red bean adds a soft, earthy sweetness.' },
-  { id: 'mango-green', tea: 'green', flavor: 'mango', sweet: '50', toppings: ['lychee-jelly'],
-    note: 'Ripe mango over a grassy green tea. Lychee jelly keeps it light.' },
-  { id: 'peach-oolong', tea: 'oolong', flavor: 'peach', sweet: '30', toppings: ['popping'],
-    note: 'Peach and oolong share a soft, fruity-roasted note that many people find easy to like.' },
-  { id: 'taro-pudding', tea: 'black', flavor: 'taro', sweet: '50', toppings: ['pudding'],
-    note: 'Taro tastes nutty and a little like vanilla. Egg pudding makes it feel like dessert.' },
-  { id: 'strawberry-foam', tea: 'green', flavor: 'strawberry', sweet: '30', toppings: ['cheese-foam'],
-    note: 'Sweet strawberry under salty, creamy foam. It sounds odd, and the contrast is the point.' },
-  { id: 'lychee-jasmine', tea: 'jasmine', flavor: 'lychee', sweet: '50', toppings: ['grass-jelly'],
-    note: 'Two perfumed flavors together, with grass jelly to ground them.' },
-  { id: 'osmanthus-barley', tea: 'barley', flavor: 'osmanthus', sweet: '30', toppings: ['red-bean'],
-    note: 'A gentle, caffeine-free cup that is floral, toasty and a little sweet.' },
+  { id: 'osmanthus-oolong', tea: 'oolong', flavor: 'osmanthus', sweet: '30', toppings: ['lychee-jelly'] },
+  { id: 'passion-jasmine', tea: 'jasmine', flavor: 'passion', sweet: '50', toppings: ['popping'] },
+  { id: 'coconut-grass', tea: 'black', flavor: 'coconut', sweet: '30', toppings: ['grass-jelly'] },
+  { id: 'barley-bean', tea: 'barley', flavor: 'brown-sugar', sweet: '50', toppings: ['red-bean'] },
+  { id: 'mango-green', tea: 'green', flavor: 'mango', sweet: '50', toppings: ['lychee-jelly'] },
+  { id: 'peach-oolong', tea: 'oolong', flavor: 'peach', sweet: '30', toppings: ['popping'] },
+  { id: 'taro-pudding', tea: 'black', flavor: 'taro', sweet: '50', toppings: ['pudding'] },
+  { id: 'strawberry-foam', tea: 'green', flavor: 'strawberry', sweet: '30', toppings: ['cheese-foam'] },
+  { id: 'lychee-jasmine', tea: 'jasmine', flavor: 'lychee', sweet: '50', toppings: ['grass-jelly'] },
+  { id: 'osmanthus-barley', tea: 'barley', flavor: 'osmanthus', sweet: '30', toppings: ['red-bean'] },
 ];
 
 export function initSurprise() {
   const button = document.getElementById('surprise-button');
   const result = document.getElementById('surprise-result');
   let lastId = null;
+  let current = null; // the idea on screen, so we can redraw it in a new language
   let cup = null;
 
   // Choose an idea that is different from your current flavor and from the last one shown.
   function pick() {
-    const current = getDrink();
-    const options = IDEAS.filter((i) => i.flavor !== current.flavor && i.id !== lastId);
+    const drink = getDrink();
+    const options = IDEAS.filter((i) => i.flavor !== drink.flavor && i.id !== lastId);
     const pool = options.length ? options : IDEAS.filter((i) => i.id !== lastId);
     return pool[Math.floor(Math.random() * pool.length)];
   }
 
-  function show(idea) {
+  function show(idea, { animate = true } = {}) {
     lastId = idea.id;
+    current = idea;
     const drink = { tea: idea.tea, flavor: idea.flavor, sweet: idea.sweet, toppings: idea.toppings };
     const cupSlot = h('div', { class: 'surprise__cup' });
 
@@ -55,18 +51,18 @@ export function initSurprise() {
         cupSlot,
         h('div', { class: 'idea__text' },
           h('h3', {}, drinkName(drink)),
-          h('p', { class: 'idea__meta' }, orderText(drink).replace(drinkName(drink) + ', ', '')),
-          h('p', {}, idea.note),
+          h('p', { class: 'idea__meta' }, orderDetails(drink)),
+          h('p', {}, t(`surprise.ideas.${idea.id}`)),
           h('div', { class: 'idea__actions' },
-            h('button', { type: 'button', class: 'btn btn--primary', onclick: () => tryIt(drink) }, 'Try it in my builder'),
-            h('button', { type: 'button', class: 'btn', onclick: () => show(pick()) }, 'Another idea'),
+            h('button', { type: 'button', class: 'btn btn--primary', onclick: () => tryIt(drink) }, t('surprise.tryIt')),
+            h('button', { type: 'button', class: 'btn', onclick: () => show(pick()) }, t('surprise.another')),
           ),
         ),
       ),
     );
     cup = mountCup(cupSlot);
-    cup.update(drink, { animate: true });
-    button.textContent = 'Surprise me again';
+    cup.update(drink, { animate });
+    button.textContent = t('surprise.again');
   }
 
   function tryIt(drink) {
@@ -75,4 +71,9 @@ export function initSurprise() {
   }
 
   button.addEventListener('click', () => show(pick()));
+
+  // New language: show the same idea again, with its words in the new language.
+  onLanguageChange(() => {
+    if (current) show(current, { animate: false });
+  });
 }

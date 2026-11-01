@@ -4,7 +4,8 @@
 // instead of pixels. That keeps the cup sharp at any size and lets us change
 // colors and add toppings with a few lines of code.
 
-import { TOPPINGS, byId, liquidColor, orderText } from './menu.js';
+import { TOPPINGS, byId, liquidColor } from './menu.js';
+import { orderText } from './menu-text.js';
 import { prefersReducedMotion } from './dom.js';
 
 const NS = 'http://www.w3.org/2000/svg';
